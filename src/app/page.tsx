@@ -3,13 +3,7 @@ import Navbar from '@/components/landing/Navbar';
 import HeroSection from '@/components/landing/HeroSection';
 import LiveDemoSection from '@/components/landing/LiveDemoSection';
 import BeforeAfterSection from '@/components/landing/BeforeAfterSection';
-import BusinessValue from '@/components/landing/BusinessValue';
-import PainSection from '@/components/landing/PainSection';
-import FeaturesSection from '@/components/landing/FeaturesSection';
-import AnalysisExampleSection from '@/components/landing/AnalysisExampleSection';
-import TrustSection from '@/components/landing/TrustSection';
-import HowItWorks from '@/components/landing/HowItWorks';
-import PricingSection from '@/components/landing/PricingSection';
+import FinalCTASection from '@/components/landing/FinalCTASection';
 import Footer from '@/components/landing/Footer';
 
 export default function Home() {
@@ -20,13 +14,7 @@ export default function Home() {
       <HeroSection />
       <LiveDemoSection />
       <BeforeAfterSection />
-      <BusinessValue />
-      <PainSection />
-      <FeaturesSection />
-      <AnalysisExampleSection />
-      <TrustSection />
-      <HowItWorks />
-      <PricingSection />
+      <FinalCTASection />
       <Footer />
     </main>
   );

@@ -146,7 +146,7 @@ export default function HeroSection() {
               <span className="text-[10px] text-white/50 font-medium">47+ גורמי ניתוח</span>
             </div>
             <div className="flex gap-1 flex-wrap justify-end">
-              {['Hook', 'תאורה', 'קצב', 'CTA', 'פנים', 'טקסט'].map((tag) => (
+              {['פתיחה', 'תאורה', 'קצב', 'סיום', 'פנים', 'טקסט'].map((tag) => (
                 <span
                   key={tag}
                   className="text-[9px] px-1.5 py-0.5 rounded bg-[rgba(212,168,67,0.1)] text-[#D4A843]/70 font-medium"
@@ -197,7 +197,7 @@ export default function HeroSection() {
         >
           <span className="text-white">לפני שאתה מעלה עוד סרטון —</span>
           <br />
-          <span className="gold-text">תראה מה עלול להרוס לו את החשיפה.</span>
+          <span className="gold-text">תראה מה עלול לפגוע לו בחשיפה.</span>
         </motion.h1>
 
         {/* Sub copy */}
@@ -207,7 +207,7 @@ export default function HeroSection() {
           transition={{ delay: 0.3 }}
           className="text-base md:text-lg text-white/55 max-w-2xl mx-auto mb-10 leading-relaxed"
         >
-          Viralyze מנתח את הסרטון שלך כמו אסטרטג סושיאל מקצועי: הוק, קצב, תאורה, כתוביות, ריטנשן — ומה גורם לצופים להמשיך או לגלול.
+          Viralyze בודק את הסרטון שלך ומראה מה גורם לאנשים להישאר — ומה גורם להם לגלול.
         </motion.p>
 
         {/* CTA */}
@@ -280,10 +280,10 @@ export default function HeroSection() {
             {/* Scores */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {[
-                { label: 'פוטנציאל וויראלי', score: 71, icon: TrendingUp, color: '#D4A843' },
-                { label: 'עוצמת Hook',        score: 38, icon: Zap,        color: '#ef4444' },
-                { label: 'שמירת קשב',         score: 78, icon: Brain,     color: '#22c55e' },
-                { label: 'גירוי ויזואלי',     score: 65, icon: Eye,       color: '#D4A843' },
+                { label: 'פוטנציאל חשיפה', score: 71, icon: TrendingUp, color: '#D4A843' },
+                { label: 'עוצמת הפתיחה', score: 38, icon: Zap,        color: '#ef4444' },
+                { label: 'כמה נשארים',   score: 78, icon: Brain,      color: '#22c55e' },
+                { label: 'ויזואלי',      score: 65, icon: Eye,        color: '#D4A843' },
               ].map((item, i) => (
                 <motion.div
                   key={item.label}
@@ -317,7 +317,7 @@ export default function HeroSection() {
                 />
               </div>
               <p className="text-sm text-white/65 leading-relaxed">
-                "הפתיחה איטית מדי — יש 4 שניות סטטיות לפני שמשהו קורה. בטיקטוק, 65% מהצופים כבר גללו. האיכות הויזואלית חזקה אבל ה-Hook לא עוצר גלילה. שינוי קטן בפתיחה יכול להכפיל את שיעור השמירה."
+                "הפתיחה איטית מדי — יש 4 שניות בלי שכלום קורה. בטיקטוק, 65% מהצופים כבר גללו לפני שהגיעו לחלק הטוב. שינוי קטן בהתחלה יכול להכפיל את מספר האנשים שיישארו לצפות."
               </p>
             </motion.div>
 
@@ -329,9 +329,9 @@ export default function HeroSection() {
               className="flex flex-wrap gap-2 justify-end"
             >
               {[
-                { label: 'גזור 4 שניות ראשונות', icon: Scissors, color: '#ef4444' },
-                { label: 'שפר תאורה',             icon: Eye,     color: '#D4A843' },
-                { label: 'הוסף כתוביות',          icon: Brain,   color: '#8b5cf6' },
+                { label: 'גזור את 4 השניות הראשונות', icon: Scissors, color: '#ef4444' },
+                { label: 'שפר את התאורה',             icon: Eye,      color: '#D4A843' },
+                { label: 'הוסף כתוביות גדולות',       icon: Brain,    color: '#8b5cf6' },
               ].map((chip) => (
                 <div
                   key={chip.label}

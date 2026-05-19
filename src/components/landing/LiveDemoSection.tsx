@@ -24,11 +24,11 @@ function getColor(v: number) {
 }
 
 const SCORES = [
-  { label: 'Hook', score: 38, color: '#ef4444', icon: Zap },
-  { label: 'Retention', score: 67, color: '#D4A843', icon: TrendingDown },
-  { label: 'Pacing', score: 51, color: '#D4A843', icon: Clock },
-  { label: 'Lighting', score: 44, color: '#f97316', icon: Sun },
-  { label: 'CTA', score: 79, color: '#22c55e', icon: CheckCircle },
+  { label: 'פתיחה',      score: 38, color: '#ef4444', icon: Zap },
+  { label: 'נשארים',     score: 67, color: '#D4A843', icon: TrendingDown },
+  { label: 'קצב',        score: 51, color: '#D4A843', icon: Clock },
+  { label: 'תאורה',      score: 44, color: '#f97316', icon: Sun },
+  { label: 'סיום',       score: 79, color: '#22c55e', icon: CheckCircle },
 ];
 
 const INSIGHTS = [
@@ -75,7 +75,7 @@ const INSIGHTS = [
   {
     icon: CheckCircle,
     ts: '0:28–0:30',
-    text: 'CTA ברור וממוקד — הצופה יודע בדיוק מה לעשות אחרי',
+    text: 'הסיום ברור וממוקד — הצופה יודע בדיוק מה לעשות אחרי שהסרטון נגמר',
     color: '#22c55e',
     bg: 'rgba(34,197,94,0.07)',
     border: 'rgba(34,197,94,0.18)',
@@ -249,7 +249,7 @@ export default function LiveDemoSection() {
             <span className="gold-text">ניתוח אמיתי.</span>
           </h2>
           <p className="text-white/50 text-lg max-w-2xl mx-auto">
-            לא גנרי. לא כללי. ספציפי, ישיר, עם חותמות זמן — ובדיוק איפה הצופים עוזבים.
+            לא כללי. לא גנרי. המערכת מראה בדיוק באיזה שנייה אנשים גוללים — ולמה.
           </p>
         </motion.div>
 
@@ -343,7 +343,7 @@ export default function LiveDemoSection() {
           className="text-center"
         >
           <p className="text-white/35 text-base mb-5">
-            המערכת רואה דברים שאתה מפספס — ואומרת לך בדיוק מה לתקן.
+            המערכת רואה דברים שקשה לראות לבד — ואומרת לך בדיוק מה לשנות.
           </p>
           <Link href="/analyze">
             <motion.button

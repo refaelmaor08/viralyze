@@ -6,19 +6,19 @@ import Link from 'next/link';
 import { Zap, TrendingUp, ArrowLeft } from 'lucide-react';
 
 const BEFORE = [
-  { label: 'Hook Score',              value: '32',   sub: '/ 100', bad: true },
-  { label: 'ריטנשן',                  value: 'נמוך', sub: '',      bad: true },
-  { label: 'קצב עריכה',               value: '41',   sub: '/ 100', bad: true },
-  { label: 'CTA',                     value: 'חלש',  sub: '',      bad: true },
-  { label: 'סיכוי לצפייה מלאה',       value: '23%',  sub: '',      bad: true },
+  { label: 'עוצמת הפתיחה',     value: '32',         sub: '/ 100', bad: true },
+  { label: 'אנשים שנשארים',    value: 'מעטים',      sub: '',      bad: true },
+  { label: 'קצב הסרטון',       value: '41',         sub: '/ 100', bad: true },
+  { label: 'מה לעשות בסוף',    value: 'לא ברור',   sub: '',      bad: true },
+  { label: 'צפו עד הסוף',      value: '23%',        sub: '',      bad: true },
 ];
 
 const AFTER = [
-  { label: 'Hook Score',              value: '84',   sub: '/ 100', bad: false },
-  { label: 'ריטנשן',                  value: 'גבוה', sub: '',      bad: false },
-  { label: 'קצב עריכה',               value: '77',   sub: '/ 100', bad: false },
-  { label: 'CTA',                     value: 'ברור', sub: '',      bad: false },
-  { label: 'סיכוי לצפייה מלאה',       value: '71%',  sub: '',      bad: false },
+  { label: 'עוצמת הפתיחה',     value: '84',         sub: '/ 100', bad: false },
+  { label: 'אנשים שנשארים',    value: 'רבים',       sub: '',      bad: false },
+  { label: 'קצב הסרטון',       value: '77',         sub: '/ 100', bad: false },
+  { label: 'מה לעשות בסוף',    value: 'ברור',       sub: '',      bad: false },
+  { label: 'צפו עד הסוף',      value: '71%',        sub: '',      bad: false },
 ];
 
 function MetricRow({
@@ -191,10 +191,10 @@ export default function BeforeAfterSection() {
             <div className="flex-1">
               <h3 className="font-black text-white text-lg mb-2">מה השתנה?</h3>
               <p className="text-white/60 leading-relaxed text-base">
-                גזרו 3 שניות מהפתיחה. שיפרו את התאורה. הוסיפו כתוביות גדולות. שינו את ה-CTA מ"עקוב" לבקשה ספציפית.
+                גזרו 3 שניות מהפתיחה. שיפרו את התאורה. הוסיפו כתוביות גדולות. שינו את הסיום מ"עקוב" לבקשה ספציפית.
               </p>
               <p className="text-[#D4A843] font-medium mt-2">
-                שינויים שלוקחים שעה — שמשפיעים על כל סרטון שתעלה מעכשיו.
+                שינויים של שעה — שמשפיעים על כל סרטון שתעלה מכאן.
               </p>
             </div>
           </div>
@@ -208,9 +208,9 @@ export default function BeforeAfterSection() {
           className="flex flex-wrap gap-3 justify-center mb-10"
         >
           {[
-            'בדוק עוד סרטון',
-            'גלה למה סרטון אחד עובד והשני נופל',
-            'שפר לפני שאתה שורף תקציב פרסום',
+            'בדוק עוד סרטון שלך',
+            'למה סרטון אחד עובד והשני לא?',
+            'שפר לפני שאתה מוציא כסף על פרסום',
           ].map((t) => (
             <span
               key={t}
