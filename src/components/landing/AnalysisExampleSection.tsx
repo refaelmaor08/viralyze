@@ -143,6 +143,7 @@ function AnalysisCard({
 export default function AnalysisExampleSection() {
   return (
     <section
+      id="analysis-example"
       className="py-24 px-6 relative overflow-hidden"
       style={{ borderTop: '1px solid rgba(212,168,67,0.07)' }}
     >

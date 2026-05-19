@@ -61,7 +61,7 @@ const benefits = [
 
 export default function BusinessValue() {
   return (
-    <section className="py-24 px-6 relative overflow-hidden">
+    <section id="business-value" className="py-24 px-6 relative overflow-hidden">
       {/* Section ambient */}
       <div className="absolute inset-0 bg-gradient-to-b from-[rgba(212,168,67,0.03)] via-transparent to-transparent pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.04)_0%,transparent_65%)] pointer-events-none" />

@@ -60,7 +60,7 @@ function FloatingInsight({
 
 export default function HeroSection() {
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden grid-pattern pt-24 pb-16">
+    <section id="hero" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden grid-pattern pt-24 pb-16">
       {/* Ambient layers */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[15%] left-1/2 -translate-x-1/2 w-[1000px] h-[700px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.09)_0%,transparent_60%)] rounded-full" />
