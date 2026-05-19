@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -30,43 +30,50 @@ export default function AnalyzePage() {
     language: 'hebrew',
     platforms: ['instagram'],
   });
+  // Safety timer: ensures framesReady=true after at most 1s regardless of what else is happening
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const extractFramesAsync = useCallback(async (selectedFile: File) => {
-    setFramesReady(false);
-    setFrameProgress(null);
-
-    if (IS_DEMO) {
-      // Demo mode: ready immediately, thumbnail generated async in background
-      setFramesReady(true);
-      void (async () => {
-        try {
-          const url = URL.createObjectURL(selectedFile);
-          const video = document.createElement('video');
-          video.muted = true;
-          video.playsInline = true;
-          video.src = url;
-          await new Promise<void>((res) => {
-            video.onloadeddata = () => { video.currentTime = 0.5; };
-            video.onseeked = () => {
-              const canvas = document.createElement('canvas');
-              const ctx = canvas.getContext('2d');
-              canvas.width = 120;
-              canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth)) || 68;
-              ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-              setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
-              URL.revokeObjectURL(url);
-              res();
-            };
-            video.onerror = () => { URL.revokeObjectURL(url); res(); };
-          });
-        } catch {
-          // Thumbnail is cosmetic — ignore errors
-        }
-      })();
-      return;
+  const clearSafetyTimer = useCallback(() => {
+    if (safetyTimerRef.current) {
+      clearTimeout(safetyTimerRef.current);
+      safetyTimerRef.current = null;
     }
+  }, []);
 
-    // Real mode: full frame extraction
+  // Fire-and-forget thumbnail from first video frame (cosmetic only)
+  const generateThumbnail = useCallback((f: File) => {
+    void (async () => {
+      try {
+        const url = URL.createObjectURL(f);
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        video.src = url;
+        await new Promise<void>((res) => {
+          video.onloadeddata = () => { video.currentTime = 0.5; };
+          video.onseeked = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 120;
+            canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth)) || 68;
+            ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+            setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
+            URL.revokeObjectURL(url);
+            res();
+          };
+          video.onerror = () => { URL.revokeObjectURL(url); res(); };
+          // Don't hang forever waiting for metadata on slow mobile
+          setTimeout(res, 3000);
+        });
+      } catch {
+        // Thumbnail is purely cosmetic — never block on errors
+      }
+    })();
+  }, []);
+
+  // Real-mode only: full frame extraction
+  const extractFramesAsync = useCallback(async (selectedFile: File) => {
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
 
@@ -96,6 +103,7 @@ export default function AnalyzePage() {
         setFrameProgress({ current, total });
       });
 
+      clearSafetyTimer();
       setFrameDataRef({
         frames,
         duration: meta.duration,
@@ -105,28 +113,46 @@ export default function AnalyzePage() {
       setFramesReady(true);
     } catch (err) {
       console.error('Frame extraction failed:', err);
+      clearSafetyTimer();
       setFramesReady(true);
     }
-  }, []);
+  }, [clearSafetyTimer]);
 
   const handleFileSelected = useCallback(
     (selectedFile: File) => {
+      clearSafetyTimer();
+
       setFile(selectedFile);
       setFrameDataRef(null);
-      setFramesReady(false);
       setThumbnailUrl(null);
-      extractFramesAsync(selectedFile);
+      setFrameProgress(null);
+      setFramesReady(false);
+
+      if (IS_DEMO) {
+        // Instant: set ready synchronously — zero video processing
+        setFramesReady(true);
+        generateThumbnail(selectedFile); // cosmetic, fire-and-forget
+        return;
+      }
+
+      // Real mode: safety fallback (1 second) so the button never stays locked
+      safetyTimerRef.current = setTimeout(() => {
+        safetyTimerRef.current = null;
+        setFramesReady(true);
+      }, 1000);
+      void extractFramesAsync(selectedFile);
     },
-    [extractFramesAsync]
+    [extractFramesAsync, generateThumbnail, clearSafetyTimer]
   );
 
   const handleRemove = useCallback(() => {
+    clearSafetyTimer();
     setFile(null);
     setFrameDataRef(null);
     setFramesReady(false);
     setFrameProgress(null);
     setThumbnailUrl(null);
-  }, []);
+  }, [clearSafetyTimer]);
 
   const canAnalyze = file && (context.platforms?.length ?? 0) > 0 && framesReady;
 
