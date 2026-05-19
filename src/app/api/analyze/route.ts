@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeVideo } from '@/lib/openai';
+import { analyzeVideo } from '@/lib/aiProvider';
 import { SimpleVideoContext, VideoFrameData } from '@/types';
 
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const AI_MODE = process.env.AI_MODE ?? 'demo';
+
+    // Only require OpenAI key when in real/openai mode
+    if (AI_MODE === 'real' && !process.env.AI_PROVIDER?.startsWith('custom') && !process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { error: 'מפתח OpenAI לא מוגדר. הוסף OPENAI_API_KEY ל-.env.local' },
         { status: 500 }
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     const { frameData, context } = body;
 
-    if (!frameData?.frames?.length) {
+    if (!frameData?.frames) {
       return NextResponse.json(
         { error: 'לא התקבלו פריימים מהסרטון. אנא נסה להעלות שוב.' },
         { status: 400 }
@@ -38,14 +41,10 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const isDev = process.env.NODE_ENV === 'development';
     const message = error instanceof Error ? error.message : String(error);
-
     console.error('[Viralyze] Analysis error:', error);
-
     return NextResponse.json(
       {
-        error: isDev
-          ? `שגיאת ניתוח: ${message}`
-          : 'הניתוח נכשל. אנא נסה שוב.',
+        error: isDev ? `שגיאת ניתוח: ${message}` : 'הניתוח נכשל. אנא נסה שוב.',
         ...(isDev && { stack: error instanceof Error ? error.stack : undefined }),
       },
       { status: 500 }

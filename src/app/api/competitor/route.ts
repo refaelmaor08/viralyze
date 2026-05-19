@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeCompetitor } from '@/lib/openai';
+import { analyzeCompetitor } from '@/lib/aiProvider';
 
 export const maxDuration = 60;
 
