@@ -4,6 +4,7 @@ import HeroSection from '@/components/landing/HeroSection';
 import BusinessValue from '@/components/landing/BusinessValue';
 import PainSection from '@/components/landing/PainSection';
 import FeaturesSection from '@/components/landing/FeaturesSection';
+import AnalysisExampleSection from '@/components/landing/AnalysisExampleSection';
 import TrustSection from '@/components/landing/TrustSection';
 import HowItWorks from '@/components/landing/HowItWorks';
 import PricingSection from '@/components/landing/PricingSection';
@@ -18,6 +19,7 @@ export default function Home() {
       <BusinessValue />
       <PainSection />
       <FeaturesSection />
+      <AnalysisExampleSection />
       <TrustSection />
       <HowItWorks />
       <PricingSection />

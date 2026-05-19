@@ -8,41 +8,41 @@ const pains = [
     stat: '300',
     unit: 'צפיות',
     headline: 'עבדת שעות. ערכת. העלת.',
-    body: 'הסרטון נראה טוב. מושקע. ואז ראית את המספרים — ולא הבנת מה קרה שם.',
+    body: 'הסרטון נראה טוב. מושקע. ואז ראית את המספרים — ולא הבנת מה קרה שם. זה לא בגלל שהתוכן גרוע.',
     color: '#ef4444',
   },
   {
     stat: '₪0',
     unit: 'תוצאות',
-    headline: 'שילמת על פרסום. אין תוצאות.',
-    body: 'הרצת קמפיין, שמת עליו כסף אמיתי. הדאשבורד חזר עם מספרים שגרמו לך לסגור אותו.',
+    headline: 'שילמת על פרסום. כלום.',
+    body: 'הרצת קמפיין. שמת עליו כסף אמיתי. הדאשבורד חזר עם מספרים שגרמו לך לסגור אותו ולא לפתוח שוב.',
     color: '#f97316',
   },
   {
     stat: '?',
     unit: 'הסיבה',
-    headline: 'לא יודע למה זה לא עובד.',
-    body: 'אין פידבק. אין הסבר. אז אתה מנחש, משנה משהו, מעלה שוב — ומקווה שהפעם יהיה שונה.',
+    headline: 'אין לך מושג למה.',
+    body: 'אין פידבק. אין הסבר. אז אתה מנחש, משנה משהו, מעלה שוב — ומקווה שהפעם יהיה אחרת.',
     color: '#D4A843',
   },
 ];
 
-const solutions = [
-  '"הפתיחה איטית מדי יחסית לטיקטוק."',
-  '"החלק הכי טוב מגיע מאוחר מדי."',
-  '"זה מרגיש יותר כמו פרסומת מאשר תוכן טבעי."',
-  '"התאורה קצת חשוכה וזה מוריד מהתחושה המקצועית."',
-  '"כנראה שאנשים יגללו לפני שמגיע החלק המעניין."',
-  '"יש יותר מדי זמן בלי שינוי בפריים."',
+const aiQuotes = [
+  { text: '"הפתיחה איטית מדי יחסית לטיקטוק."', ts: '0:00–0:04' },
+  { text: '"החלק הכי טוב מגיע מאוחר מדי — שנייה 28."', ts: '0:28' },
+  { text: '"זה מרגיש כמו פרסומת, לא תוכן טבעי."', ts: 'כללי' },
+  { text: '"יותר מדי זמן בלי שינוי בפריים."', ts: '0:18–0:26' },
+  { text: '"התאורה חשוכה — מוריד מהאמינות המקצועית."', ts: '0:05–0:20' },
+  { text: '"כנראה שאנשים יגללו לפני שמגיע החלק המעניין."', ts: '0:00–0:08' },
 ];
 
 export default function PainSection() {
   return (
-    <section className="py-24 px-6 relative">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(212,168,67,0.04)_0%,transparent_60%)] pointer-events-none" />
+    <section className="py-24 px-6 relative" style={{ borderTop: '1px solid rgba(212,168,67,0.07)' }}>
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(212,168,67,0.04)_0%,transparent_65%)] pointer-events-none" />
 
       <div className="max-w-5xl mx-auto">
-        {/* Pain header */}
+        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 25 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -53,9 +53,9 @@ export default function PainSection() {
             מה שאתה מכיר
           </p>
           <h2 className="text-4xl md:text-5xl font-black leading-tight">
-            <span className="text-white">רוב היוצרים לא מבינים</span>
+            <span className="text-white">עסקים מפסידים לקוחות</span>
             <br />
-            <span className="gold-text">למה הסרטונים שלהם לא מצליחים.</span>
+            <span className="gold-text">בגלל סרטונים שלא עובדים.</span>
           </h2>
         </motion.div>
 
@@ -70,12 +70,12 @@ export default function PainSection() {
               transition={{ delay: i * 0.1 }}
               className="rounded-2xl p-6 text-right relative overflow-hidden"
               style={{
-                background: `${p.color}08`,
+                background: `${p.color}07`,
                 border: `1px solid ${p.color}20`,
               }}
             >
               <div
-                className="text-5xl font-black mb-1 opacity-15 absolute top-4 left-5 font-mono"
+                className="text-6xl font-black mb-1 opacity-10 absolute top-4 left-5 font-mono leading-none"
                 style={{ color: p.color }}
               >
                 {p.stat}
@@ -89,7 +89,7 @@ export default function PainSection() {
           ))}
         </div>
 
-        {/* Bridge */}
+        {/* Bridge — AI solution */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -97,41 +97,50 @@ export default function PainSection() {
           className="glass-strong rounded-3xl p-8 md:p-10"
         >
           <div className="grid md:grid-cols-2 gap-10 items-center">
-            {/* Left: AI quote examples */}
+            {/* AI quote examples */}
             <div className="space-y-3 order-last md:order-first" dir="ltr">
-              {solutions.map((s, i) => (
+              {aiQuotes.map((q, i) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, x: -15 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
-                  transition={{ delay: i * 0.08 }}
-                  className="flex items-start gap-2.5"
+                  transition={{ delay: i * 0.07 }}
+                  className="flex items-start gap-3"
                 >
-                  <div className="w-5 h-5 rounded-full bg-[rgba(212,168,67,0.15)] flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#D4A843]" />
+                  <div className="flex-shrink-0 mt-0.5">
+                    <div className="w-5 h-5 rounded-full bg-[rgba(212,168,67,0.15)] flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#D4A843]" />
+                    </div>
                   </div>
-                  <p className="text-sm text-white/60 italic leading-relaxed">{s}</p>
+                  <div className="flex-1">
+                    <p className="text-sm text-white/65 italic leading-relaxed">{q.text}</p>
+                    <span className="text-[10px] font-mono text-white/25 mt-0.5 block">{q.ts}</span>
+                  </div>
                 </motion.div>
               ))}
             </div>
 
-            {/* Right: Solution text */}
+            {/* Solution text */}
             <div className="text-right">
               <div className="inline-flex items-center gap-2 bg-[rgba(212,168,67,0.1)] px-3 py-1.5 rounded-full mb-5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#D4A843]" />
+                <motion.span
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.8, repeat: Infinity }}
+                  className="w-1.5 h-1.5 rounded-full bg-[#D4A843]"
+                />
                 <span className="text-xs text-[#D4A843] font-semibold">הפתרון</span>
               </div>
               <h3 className="text-2xl md:text-3xl font-black text-white mb-4 leading-snug">
-                Viralyze מסביר לך{' '}
+                Viralyze אומר לך{' '}
                 <span className="gold-text">בדיוק מה לתקן</span>
-                {' '}— לפני שאתה מעלה.
+                {' '}— עם חותמת זמן.
               </h3>
-              <p className="text-white/50 text-base leading-relaxed mb-6">
-                ה-AI צופה בסרטון שלך, מנתח מה הצופים יראו ב-3 השניות הראשונות, איפה הם יגללו הלאה — ונותן לך פידבק ספציפי כמו מנהל תוכן מנוסה.
+              <p className="text-white/50 text-base leading-relaxed mb-3">
+                ה-AI צופה בסרטון שלך בפועל, מנתח מה הצופים רואים ב-3 השניות הראשונות, ומסביר איפה הם יגללו הלאה ולמה.
               </p>
-              <p className="text-white/70 text-sm font-medium mb-6">
-                לפעמים שינוי קטן בסרטון יכול לעשות הבדל ענק בצפיות.
+              <p className="text-white/70 text-sm font-medium mb-7">
+                יותר צפיות = יותר לקוחות. וזה מתחיל בלדעת מה לתקן.
               </p>
               <Link href="/analyze">
                 <motion.button
@@ -139,7 +148,7 @@ export default function PainSection() {
                   whileTap={{ scale: 0.97 }}
                   className="bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-black px-7 py-3.5 rounded-xl text-base shadow-lg shadow-[rgba(212,168,67,0.3)]"
                 >
-                  נסה את זה עכשיו — בחינם
+                  נסה עכשיו — הניתוח הראשון חינם
                 </motion.button>
               </Link>
             </div>

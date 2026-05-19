@@ -15,7 +15,7 @@ const steps = [
     number: '02',
     icon: MousePointer,
     title: 'בוחר פלטפורמה',
-    description: 'TikTok או Instagram Reels. אפשר להוסיף נישה ומטרה — אבל זה לא חובה.',
+    description: 'TikTok, Instagram, YouTube, Facebook, LinkedIn, X. אפשר לבחור כמה פלטפורמות — הניתוח מותאם לכל אחת.',
   },
   {
     number: '03',
