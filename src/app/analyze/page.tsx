@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,6 +8,8 @@ import { Zap, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
+
+const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
 // Client-only components (use browser APIs)
 const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader'), { ssr: false });
@@ -33,12 +35,43 @@ export default function AnalyzePage() {
     setFramesReady(false);
     setFrameProgress(null);
 
+    if (IS_DEMO) {
+      // Demo mode: ready immediately, thumbnail generated async in background
+      setFramesReady(true);
+      void (async () => {
+        try {
+          const url = URL.createObjectURL(selectedFile);
+          const video = document.createElement('video');
+          video.muted = true;
+          video.playsInline = true;
+          video.src = url;
+          await new Promise<void>((res) => {
+            video.onloadeddata = () => { video.currentTime = 0.5; };
+            video.onseeked = () => {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              canvas.width = 120;
+              canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth)) || 68;
+              ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+              setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
+              URL.revokeObjectURL(url);
+              res();
+            };
+            video.onerror = () => { URL.revokeObjectURL(url); res(); };
+          });
+        } catch {
+          // Thumbnail is cosmetic — ignore errors
+        }
+      })();
+      return;
+    }
+
+    // Real mode: full frame extraction
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
 
       const meta = await getVideoMeta(selectedFile);
 
-      // Generate thumbnail from first frame
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const video = document.createElement('video');
@@ -47,9 +80,7 @@ export default function AnalyzePage() {
       const url = URL.createObjectURL(selectedFile);
       video.src = url;
       await new Promise<void>((res) => {
-        video.onloadeddata = () => {
-          video.currentTime = 0.3;
-        };
+        video.onloadeddata = () => { video.currentTime = 0.3; };
         video.onseeked = () => {
           canvas.width = 120;
           canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth));
@@ -74,7 +105,6 @@ export default function AnalyzePage() {
       setFramesReady(true);
     } catch (err) {
       console.error('Frame extraction failed:', err);
-      // Don't block the user — they can still analyze with empty frames (text fallback)
       setFramesReady(true);
     }
   }, []);
@@ -107,6 +137,21 @@ export default function AnalyzePage() {
     setError('');
 
     try {
+      if (IS_DEMO) {
+        const { getDemoResult } = await import('@/lib/demoResults');
+        const result = await getDemoResult({
+          platforms: context.platforms ?? ['instagram'],
+          language: context.language || 'hebrew',
+          niche: context.niche,
+          goal: context.goal,
+        });
+        sessionStorage.setItem('viralyze_result', JSON.stringify(result));
+        sessionStorage.setItem('viralyze_context', JSON.stringify(context));
+        router.push(`/results/${result.id}`);
+        return;
+      }
+
+      // Real mode: send frames to API
       const finalFrameData: VideoFrameData = frameDataRef || {
         frames: [],
         duration: 0,
