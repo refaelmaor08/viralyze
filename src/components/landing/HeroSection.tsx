@@ -7,6 +7,37 @@ import { Zap, TrendingUp, Brain, Eye, Scissors, AlertTriangle, CheckCircle, Arro
 
 const PLATFORMS = ['TikTok', 'Instagram', 'Facebook', 'YouTube', 'LinkedIn', 'X / Twitter'];
 
+const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
+  id: i,
+  left: `${4 + ((i * 5.7) % 92)}%`,
+  size: 1.2 + (i % 4) * 0.6,
+  delay: i * 0.55,
+  duration: 10 + (i % 6) * 2.5,
+  opacity: 0.15 + (i % 3) * 0.1,
+}));
+
+function FloatingParticles() {
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {PARTICLES.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full bg-[#D4A843]"
+          style={{ left: p.left, bottom: '-8px', width: p.size, height: p.size }}
+          animate={{ y: [0, -900], opacity: [0, p.opacity, p.opacity, 0] }}
+          transition={{
+            delay: p.delay,
+            duration: p.duration,
+            repeat: Infinity,
+            ease: 'linear',
+            times: [0, 0.1, 0.85, 1],
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function LiveCounter({ from, to, duration = 2000 }: { from: number; to: number; duration?: number }) {
   const [count, setCount] = useState(from);
 
@@ -61,9 +92,16 @@ function FloatingInsight({
 export default function HeroSection() {
   return (
     <section id="hero" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden grid-pattern pt-24 pb-16">
+      <FloatingParticles />
+
       {/* Ambient layers */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[15%] left-1/2 -translate-x-1/2 w-[1000px] h-[700px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.09)_0%,transparent_60%)] rounded-full" />
+        <motion.div
+          className="absolute top-[15%] left-1/2 -translate-x-1/2 w-[1000px] h-[700px] rounded-full"
+          style={{ background: 'radial-gradient(ellipse,rgba(212,168,67,0.09) 0%,transparent 60%)' }}
+          animate={{ scale: [1, 1.04, 1], opacity: [1, 0.8, 1] }}
+          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        />
         <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-[rgba(8,8,8,0.7)] to-transparent" />
         {/* Side glows */}
         <div className="absolute top-1/3 left-0 w-[300px] h-[400px] bg-[radial-gradient(ellipse_at_left,rgba(212,168,67,0.04)_0%,transparent_70%)]" />
@@ -174,7 +212,7 @@ export default function HeroSection() {
             className="w-2 h-2 rounded-full bg-[#D4A843]"
           />
           <span className="text-sm text-[#D4A843] font-semibold">
-            AI שרואה את הסרטון שלך · לא רק שומע עליו
+            AI שרואה למה הסרטון שלך לא מגיע למספרים שמגיע לו
           </span>
         </motion.div>
 

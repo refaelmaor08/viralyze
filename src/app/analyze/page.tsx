@@ -8,6 +8,7 @@ import { Zap, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
+import AnalysisHistory from '@/components/analyze/AnalysisHistory';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
@@ -173,6 +174,16 @@ export default function AnalyzePage() {
         });
         sessionStorage.setItem('viralyze_result', JSON.stringify(result));
         sessionStorage.setItem('viralyze_context', JSON.stringify(context));
+        const { saveToHistory } = await import('@/lib/history');
+        saveToHistory({
+          id: result.id,
+          date: Date.now(),
+          fileName: file.name,
+          thumbnailUrl: thumbnailUrl,
+          viralScore: result.scores.viralPotential,
+          hookScore: result.scores.hookStrength,
+          platform: (context.platforms ?? ['instagram'])[0],
+        });
         router.push(`/results/${result.id}`);
         return;
       }
@@ -208,6 +219,16 @@ export default function AnalyzePage() {
       const result = data as AnalysisResult;
       sessionStorage.setItem('viralyze_result', JSON.stringify(result));
       sessionStorage.setItem('viralyze_context', JSON.stringify(context));
+      const { saveToHistory } = await import('@/lib/history');
+      saveToHistory({
+        id: result.id,
+        date: Date.now(),
+        fileName: file.name,
+        thumbnailUrl: thumbnailUrl,
+        viralScore: result.scores.viralPotential,
+        hookScore: result.scores.hookStrength,
+        platform: (context.platforms ?? ['instagram'])[0],
+      });
       router.push(`/results/${result.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה';
@@ -265,6 +286,9 @@ export default function AnalyzePage() {
                 ה-AI יצפה בסרטון שלך ויסביר בדיוק מה עלול לפגוע בחשיפה שלו.
               </motion.p>
             </div>
+
+            {/* History */}
+            <AnalysisHistory />
 
             {/* Upload */}
             <motion.div
