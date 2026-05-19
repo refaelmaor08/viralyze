@@ -183,9 +183,9 @@ export default function HeroSection() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="text-xl md:text-2xl text-white/40 font-medium mb-4"
+          className="text-lg md:text-xl text-white/40 font-medium mb-5"
         >
-          הסרטון שלך יכול לאבד לקוחות בלי שתשים לב.
+          יותר חשיפה = יותר לקוחות. וזה מתחיל בלדעת מה לתקן.
         </motion.p>
 
         {/* Main headline */}
@@ -195,9 +195,9 @@ export default function HeroSection() {
           transition={{ duration: 0.7, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="text-5xl sm:text-6xl md:text-7xl font-black leading-[1.07] tracking-tight mb-6"
         >
-          <span className="text-white">האלגוריתם מחליט</span>
+          <span className="text-white">לפני שאתה מעלה עוד סרטון —</span>
           <br />
-          <span className="gold-text">תוך שניות.</span>
+          <span className="gold-text">תראה מה עלול להרוס לו את החשיפה.</span>
         </motion.h1>
 
         {/* Sub copy */}
@@ -205,17 +205,9 @@ export default function HeroSection() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="text-base md:text-lg text-white/45 max-w-2xl mx-auto mb-2 leading-relaxed"
+          className="text-base md:text-lg text-white/55 max-w-2xl mx-auto mb-10 leading-relaxed"
         >
-          לפעמים שינוי קטן בסרטון יכול להכפיל חשיפה. לפעמים פתיחה איטית של 3 שניות מספיקה לאבד את הצופה לנצח.
-        </motion.p>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.38 }}
-          className="text-base md:text-lg text-white/70 max-w-xl mx-auto mb-10 font-medium"
-        >
-          Viralyze מנתח את הסרטון שלך ומסביר בדיוק מה עלול לפגוע — לפני שאתה מעלה.
+          Viralyze מנתח את הסרטון שלך כמו אסטרטג סושיאל מקצועי: הוק, קצב, תאורה, כתוביות, ריטנשן — ומה גורם לצופים להמשיך או לגלול.
         </motion.p>
 
         {/* CTA */}
@@ -232,11 +224,11 @@ export default function HeroSection() {
               className="flex items-center gap-3 bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-black px-8 py-4 rounded-2xl text-lg shadow-2xl shadow-[rgba(212,168,67,0.45)]"
             >
               <Zap className="w-5 h-5 fill-black" />
-              נתח את הסרטון שלי — חינם
+              נתח את הסרטון שלי
             </motion.button>
           </Link>
-          <a href="#how-it-works" className="text-white/30 hover:text-white/60 text-sm transition-colors py-4">
-            איך זה עובד ↓
+          <a href="#live-demo" className="text-white/30 hover:text-white/60 text-sm transition-colors py-4">
+            ראה דוגמה אמיתית ↓
           </a>
         </motion.div>
 

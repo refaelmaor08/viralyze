@@ -1,6 +1,8 @@
 import AnimatedBackgroundClient from '@/components/ui/AnimatedBackgroundClient';
 import Navbar from '@/components/landing/Navbar';
 import HeroSection from '@/components/landing/HeroSection';
+import LiveDemoSection from '@/components/landing/LiveDemoSection';
+import BeforeAfterSection from '@/components/landing/BeforeAfterSection';
 import BusinessValue from '@/components/landing/BusinessValue';
 import PainSection from '@/components/landing/PainSection';
 import FeaturesSection from '@/components/landing/FeaturesSection';
@@ -16,6 +18,8 @@ export default function Home() {
       <AnimatedBackgroundClient />
       <Navbar />
       <HeroSection />
+      <LiveDemoSection />
+      <BeforeAfterSection />
       <BusinessValue />
       <PainSection />
       <FeaturesSection />
