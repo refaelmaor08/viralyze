@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Zap, X, Menu, ChevronLeft, LogOut, Clock } from 'lucide-react';
-import { getUser, clearUser, type AuthUser } from '@/lib/auth';
+import type { AuthUser } from '@/lib/auth';
+import { useAuth } from '@/lib/authContext';
 
 const NAV_ITEMS = [
   { label: 'בית',        href: '#hero' },
@@ -30,6 +31,7 @@ function Logo() {
 
 function UserMenu({ user }: { user: AuthUser }) {
   const router = useRouter();
+  const { signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const initial = user.email[0].toUpperCase();
@@ -42,11 +44,10 @@ function UserMenu({ user }: { user: AuthUser }) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  function handleSignOut() {
-    clearUser();
+  async function handleSignOut() {
+    await signOut();
     setOpen(false);
     router.push('/');
-    router.refresh();
   }
 
   return (
@@ -107,13 +108,9 @@ function UserMenu({ user }: { user: AuthUser }) {
 }
 
 export default function Navbar() {
+  const { user, signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    setUser(getUser());
-  }, []);
 
   // Detect scroll for background opacity
   useEffect(() => {
@@ -348,7 +345,7 @@ export default function Navbar() {
                 </Link>
                 {user ? (
                   <button
-                    onClick={() => { clearUser(); setUser(null); setIsOpen(false); }}
+                    onClick={() => { signOut(); setIsOpen(false); }}
                     className="w-full py-3 rounded-xl text-sm text-white/35 hover:text-white/55 transition-colors flex items-center justify-center gap-2"
                   >
                     <LogOut className="w-3.5 h-3.5" />

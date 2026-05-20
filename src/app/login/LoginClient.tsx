@@ -4,10 +4,15 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Zap, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import {
+  Zap, Mail, ArrowRight, AlertCircle, KeyRound, Info,
+} from 'lucide-react';
+import { supabase, supabaseReady } from '@/lib/supabase';
 import { setUser } from '@/lib/auth';
+import { useAuth } from '@/lib/authContext';
+import { migrateAnonymousHistory } from '@/lib/history';
 
-type Provider = 'google' | 'apple' | 'email' | null;
+// ── Icons ───────────────────────────────────────────────────────────────────
 
 function GoogleIcon() {
   return (
@@ -28,33 +33,124 @@ function AppleIcon() {
   );
 }
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type Step =
+  | 'providers'
+  | 'email-form'
+  | 'email-sent'
+  | 'passkey';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function callbackUrl(next: string) {
+  if (typeof window === 'undefined') return '';
+  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/analyze';
+  const redirect = searchParams.get('redirect') ?? '/analyze';
+  const errorParam = searchParams.get('error');
 
-  const [provider, setProvider] = useState<Provider>(null);
+  const { refresh } = useAuth();
+
+  const [step, setStep] = useState<Step>('providers');
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState<string | null>(null); // which provider is loading
+  const [error, setError] = useState(errorParam ?? '');
 
-  async function handleSubmit(e: React.FormEvent) {
+  // ── OAuth handlers ──────────────────────────────────────────────────────────
+
+  async function handleGoogle() {
+    setError('');
+    if (!supabaseReady || !supabase) {
+      // TODO: Add NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local
+      // TODO: Enable Google OAuth in Supabase Dashboard → Authentication → Providers → Google
+      setError('Google Sign In זמין לאחר הגדרת Supabase — ראה TODO בקוד');
+      return;
+    }
+    setLoading('google');
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: callbackUrl(redirect) },
+    });
+    if (err) setError(err.message);
+    setLoading(null);
+  }
+
+  async function handleApple() {
+    setError('');
+    if (!supabaseReady || !supabase) {
+      // TODO: Add NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local
+      // TODO: Enable Apple OAuth in Supabase Dashboard → Authentication → Providers → Apple
+      // TODO: Requires Apple Developer account + Services ID + private key
+      // On iOS Safari, this will trigger Face ID / Touch ID automatically
+      setError('Apple Sign In זמין לאחר הגדרת Supabase — ראה TODO בקוד');
+      return;
+    }
+    setLoading('apple');
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'apple',
+      options: { redirectTo: callbackUrl(redirect) },
+    });
+    if (err) setError(err.message);
+    setLoading(null);
+  }
+
+  async function handlePasskey() {
+    setError('');
+    // TODO: Supabase Passkey/WebAuthn support via supabase.auth.signInWithPasskey()
+    // Requires: Supabase project with MFA enabled + rpId configured for your domain
+    // On iPhone with Face ID: works automatically when WebAuthn is configured
+    // See: https://supabase.com/docs/guides/auth/auth-mfa
+    setStep('passkey');
+  }
+
+  // ── Email magic link ────────────────────────────────────────────────────────
+
+  async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = email.trim().toLowerCase();
     if (!trimmed || !trimmed.includes('@')) {
       setError('הכנס כתובת אימייל תקינה');
       return;
     }
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
-    setUser({ email: trimmed, provider: provider ?? 'email' });
-    router.push(redirect);
+
+    setLoading('email');
+    setError('');
+
+    if (supabaseReady && supabase) {
+      // Real: send magic link via Supabase
+      const { error: err } = await supabase.auth.signInWithOtp({
+        email: trimmed,
+        options: {
+          emailRedirectTo: callbackUrl(redirect),
+          shouldCreateUser: true,
+        },
+      });
+      setLoading(null);
+      if (err) { setError(err.message); return; }
+      setStep('email-sent');
+    } else {
+      // Demo fallback (localStorage only — no real session)
+      await new Promise((r) => setTimeout(r, 700));
+      const authUser = { email: trimmed, provider: 'email' as const };
+      setUser(authUser);
+      migrateAnonymousHistory(trimmed);
+      refresh();
+      router.push(redirect);
+    }
   }
 
-  const providerLabel = provider === 'google' ? 'Google' : provider === 'apple' ? 'Apple' : null;
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#080808] flex flex-col items-center justify-center px-6 py-12">
+      {/* Ambient glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.08)_0%,transparent_70%)]" />
       </div>
@@ -69,6 +165,25 @@ export default function LoginClient() {
           <Zap className="w-5 h-5 text-black fill-black" />
         </div>
       </Link>
+
+      {/* Demo mode notice */}
+      {!supabaseReady && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-sm mb-4 relative z-10 flex items-start gap-2.5 px-4 py-3 rounded-xl"
+          style={{
+            background: 'rgba(212,168,67,0.06)',
+            border: '1px solid rgba(212,168,67,0.18)',
+          }}
+        >
+          <Info className="w-4 h-4 text-[#D4A843]/70 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-white/45 leading-relaxed">
+            מצב פיתוח — Supabase לא מוגדר. Google ו-Apple Sign In זמינים לאחר הגדרת .env.local.
+            כניסה עם אימייל עובדת ומבוססת על localStorage.
+          </p>
+        </motion.div>
+      )}
 
       {/* Card */}
       <motion.div
@@ -86,9 +201,11 @@ export default function LoginClient() {
         }}
       >
         <AnimatePresence mode="wait">
-          {!provider ? (
+
+          {/* ── Providers ── */}
+          {step === 'providers' && (
             <motion.div
-              key="options"
+              key="providers"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, x: -16 }}
@@ -97,31 +214,39 @@ export default function LoginClient() {
               <h1 className="text-2xl font-black text-white text-center mb-1">ברוך הבא</h1>
               <p className="text-white/40 text-sm text-center mb-8">היכנס לחשבון Viralyze שלך</p>
 
+              {error && (
+                <div className="mb-4 flex items-start gap-2 text-red-400 text-xs p-3 rounded-xl"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)' }}>
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
               <div className="space-y-3 mb-5">
-                <button
-                  onClick={() => setProvider('google')}
-                  className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-semibold text-sm transition-all hover:bg-white/8"
-                  style={{
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'rgba(255,255,255,0.85)',
-                  }}
-                >
-                  <GoogleIcon />
-                  המשך עם Google
-                </button>
-                <button
-                  onClick={() => setProvider('apple')}
-                  className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-semibold text-sm transition-all hover:bg-white/8"
-                  style={{
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'rgba(255,255,255,0.85)',
-                  }}
-                >
-                  <AppleIcon />
-                  המשך עם Apple
-                </button>
+                {/* Google */}
+                <SocialButton
+                  icon={<GoogleIcon />}
+                  label="המשך עם Google"
+                  loading={loading === 'google'}
+                  onClick={handleGoogle}
+                />
+                {/* Apple */}
+                <SocialButton
+                  icon={<AppleIcon />}
+                  label="המשך עם Apple"
+                  loading={loading === 'apple'}
+                  onClick={handleApple}
+                  note="Face ID / Touch ID בנייד"
+                />
+                {/* Passkey */}
+                <SocialButton
+                  icon={<KeyRound className="w-4.5 h-4.5" />}
+                  label="כניסה עם Passkey"
+                  loading={false}
+                  onClick={handlePasskey}
+                  note="ביומטרי / מפתח גישה"
+                  muted
+                />
               </div>
 
               <div className="flex items-center gap-3 mb-5">
@@ -131,7 +256,7 @@ export default function LoginClient() {
               </div>
 
               <button
-                onClick={() => setProvider('email')}
+                onClick={() => { setStep('email-form'); setError(''); }}
                 className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-semibold text-sm transition-all"
                 style={{
                   background: 'rgba(212,168,67,0.08)',
@@ -143,16 +268,19 @@ export default function LoginClient() {
                 המשך עם אימייל
               </button>
             </motion.div>
-          ) : (
+          )}
+
+          {/* ── Email form ── */}
+          {step === 'email-form' && (
             <motion.div
-              key="form"
+              key="email-form"
               initial={{ opacity: 0, x: 16 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
               <button
-                onClick={() => { setProvider(null); setError(''); setEmail(''); }}
+                onClick={() => { setStep('providers'); setError(''); setEmail(''); }}
                 className="flex items-center gap-1.5 text-white/30 hover:text-white/55 text-xs mb-6 transition-colors"
               >
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -160,15 +288,15 @@ export default function LoginClient() {
               </button>
 
               <h2 className="text-xl font-black text-white text-center mb-1">
-                {providerLabel ? `המשך עם ${providerLabel}` : 'כניסה עם אימייל'}
+                {supabaseReady ? 'כניסה עם Magic Link' : 'כניסה עם אימייל'}
               </h2>
               <p className="text-white/40 text-sm text-center mb-7">
-                {providerLabel
-                  ? `הכנס את האימייל שלך ב-${providerLabel}`
-                  : 'הכנס את האימייל שלך'}
+                {supabaseReady
+                  ? 'נשלח לך קישור כניסה למייל — ללא סיסמה'
+                  : 'הכנס את האימייל שלך כדי להמשיך'}
               </p>
 
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleEmailSubmit} className="space-y-3">
                 <input
                   type="email"
                   autoFocus
@@ -192,19 +320,89 @@ export default function LoginClient() {
                 )}
                 <motion.button
                   type="submit"
-                  disabled={loading}
-                  whileHover={{ scale: loading ? 1 : 1.02 }}
+                  disabled={loading === 'email'}
+                  whileHover={{ scale: loading === 'email' ? 1 : 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   className="w-full py-3.5 rounded-xl font-black text-sm text-black flex items-center justify-center gap-2 disabled:opacity-60"
                   style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)' }}
                 >
-                  {loading ? (
+                  {loading === 'email' ? (
                     <div className="w-4 h-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
-                  ) : 'המשך'}
+                  ) : supabaseReady ? 'שלח Magic Link' : 'המשך'}
                 </motion.button>
               </form>
             </motion.div>
           )}
+
+          {/* ── Email sent ── */}
+          {step === 'email-sent' && (
+            <motion.div
+              key="email-sent"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center py-4"
+            >
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
+                style={{ background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.25)' }}
+              >
+                <Mail className="w-7 h-7 text-[#D4A843]" />
+              </div>
+              <h2 className="text-xl font-black text-white mb-2">בדוק את המייל שלך</h2>
+              <p className="text-white/45 text-sm leading-relaxed mb-6">
+                שלחנו קישור כניסה ל-<span className="text-white/70" dir="ltr">{email}</span>.
+                <br />
+                לחץ על הקישור כדי להיכנס לחשבון.
+              </p>
+              <button
+                onClick={() => { setStep('email-form'); setError(''); }}
+                className="text-xs text-white/30 hover:text-white/55 transition-colors"
+              >
+                לא קיבלת? שנה אימייל
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── Passkey (TODO) ── */}
+          {step === 'passkey' && (
+            <motion.div
+              key="passkey"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <button
+                onClick={() => setStep('providers')}
+                className="flex items-center gap-1.5 text-white/30 hover:text-white/55 text-xs mb-6 transition-colors"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+                חזור
+              </button>
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
+                style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)' }}
+              >
+                <KeyRound className="w-7 h-7 text-[#D4A843]" />
+              </div>
+              <h2 className="text-xl font-black text-white text-center mb-2">Passkey / Face ID</h2>
+              <p className="text-white/45 text-sm text-center leading-relaxed mb-6">
+                כניסה ביומטרית דרך Passkey בקרוב.
+                <br />
+                בינתיים השתמש באימייל או Google.
+              </p>
+              {/* TODO: Implement supabase.auth.signInWithPasskey() when Supabase MFA with WebAuthn is enabled */}
+              <button
+                onClick={() => setStep('email-form')}
+                className="w-full py-3.5 rounded-xl font-bold text-sm text-[#D4A843] transition-all"
+                style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.22)' }}
+              >
+                <Mail className="w-4 h-4 inline ml-2" />
+                כניסה עם אימייל במקום
+              </button>
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </motion.div>
 
@@ -212,5 +410,46 @@ export default function LoginClient() {
         בלחיצה על המשך, אתה מסכים לתנאי השימוש ומדיניות הפרטיות שלנו.
       </p>
     </div>
+  );
+}
+
+// ── Sub-component ────────────────────────────────────────────────────────────
+
+function SocialButton({
+  icon,
+  label,
+  loading,
+  onClick,
+  note,
+  muted = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  loading: boolean;
+  onClick: () => void;
+  note?: string;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="w-full flex items-center gap-3 py-3 px-4 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 hover:bg-white/8 active:scale-[0.98]"
+      style={{
+        background: muted ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)',
+        border: `1px solid rgba(255,255,255,${muted ? '0.07' : '0.1'})`,
+        color: muted ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.85)',
+      }}
+    >
+      <span className="flex-shrink-0">
+        {loading ? (
+          <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/60 animate-spin" />
+        ) : icon}
+      </span>
+      <span className="flex-1 text-right">{label}</span>
+      {note && !loading && (
+        <span className="text-[10px] text-white/20 flex-shrink-0">{note}</span>
+      )}
+    </button>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
 import "./globals.css";
 import AccessibilityMenu from "@/components/ui/AccessibilityMenu";
+import Providers from "@/components/Providers";
 
 const heebo = Heebo({
   subsets: ["latin", "hebrew"],
@@ -30,8 +31,10 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} antialiased`}>
       <body className="bg-[#080808] text-white min-h-screen font-[family-name:var(--font-heebo)]">
-        {children}
-        <AccessibilityMenu />
+        <Providers>
+          {children}
+          <AccessibilityMenu />
+        </Providers>
       </body>
     </html>
   );

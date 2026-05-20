@@ -9,7 +9,8 @@ import dynamic from 'next/dynamic';
 import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
 import AnalysisHistory from '@/components/analyze/AnalysisHistory';
-import { getUser, type AuthUser } from '@/lib/auth';
+import { saveFullResult } from '@/lib/history';
+import { useAuth } from '@/lib/authContext';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
@@ -35,8 +36,7 @@ export default function AnalyzePage() {
   // Safety timer: ensures framesReady=true after at most 1s regardless of what else is happening
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [user, setUser] = useState<AuthUser | null>(null);
-  useEffect(() => { setUser(getUser()); }, []);
+  const { user } = useAuth();
 
   const clearSafetyTimer = useCallback(() => {
     if (safetyTimerRef.current) {
@@ -178,16 +178,21 @@ export default function AnalyzePage() {
         });
         sessionStorage.setItem('viralyze_result', JSON.stringify(result));
         sessionStorage.setItem('viralyze_context', JSON.stringify(context));
+        const savedContext = { language: context.language };
+        saveFullResult(result.id, result, savedContext);
         const { saveToHistory } = await import('@/lib/history');
-        saveToHistory({
-          id: result.id,
-          date: Date.now(),
-          fileName: file.name,
-          thumbnailUrl: thumbnailUrl,
-          viralScore: result.scores.viralPotential,
-          hookScore: result.scores.hookStrength,
-          platform: (context.platforms ?? ['instagram'])[0],
-        });
+        saveToHistory(
+          {
+            id: result.id,
+            date: Date.now(),
+            fileName: file.name,
+            thumbnailUrl: thumbnailUrl,
+            viralScore: result.scores.viralPotential,
+            hookScore: result.scores.hookStrength,
+            platform: (context.platforms ?? ['instagram'])[0],
+          },
+          user?.email,
+        );
         router.push(`/results/${result.id}`);
         return;
       }
@@ -223,16 +228,21 @@ export default function AnalyzePage() {
       const result = data as AnalysisResult;
       sessionStorage.setItem('viralyze_result', JSON.stringify(result));
       sessionStorage.setItem('viralyze_context', JSON.stringify(context));
+      const savedContext = { language: context.language };
+      saveFullResult(result.id, result, savedContext);
       const { saveToHistory } = await import('@/lib/history');
-      saveToHistory({
-        id: result.id,
-        date: Date.now(),
-        fileName: file.name,
-        thumbnailUrl: thumbnailUrl,
-        viralScore: result.scores.viralPotential,
-        hookScore: result.scores.hookStrength,
-        platform: (context.platforms ?? ['instagram'])[0],
-      });
+      saveToHistory(
+        {
+          id: result.id,
+          date: Date.now(),
+          fileName: file.name,
+          thumbnailUrl: thumbnailUrl,
+          viralScore: result.scores.viralPotential,
+          hookScore: result.scores.hookStrength,
+          platform: (context.platforms ?? ['instagram'])[0],
+        },
+        user?.email,
+      );
       router.push(`/results/${result.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה';

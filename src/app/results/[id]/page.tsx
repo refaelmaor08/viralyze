@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw } from 'lucide-react';
 import { AnalysisResult, CompetitorAnalysis } from '@/types';
+import { getStoredResult } from '@/lib/history';
 import ScoreDashboard from '@/components/results/ScoreDashboard';
 import FeedbackPanel from '@/components/results/FeedbackPanel';
 import SuggestionsPanel from '@/components/results/SuggestionsPanel';
@@ -30,13 +31,32 @@ export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('scores');
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('viralyze_result');
-    const storedContext = sessionStorage.getItem('viralyze_context');
-    if (!stored) { router.push('/analyze'); return; }
-    const parsed = JSON.parse(stored) as AnalysisResult;
-    if (parsed.id !== params.id) { router.push('/analyze'); return; }
-    setResult(parsed);
-    if (storedContext) setContext(JSON.parse(storedContext));
+    const id = params.id as string;
+
+    // 1. Try sessionStorage (just-analyzed — fastest path)
+    const sessionRaw = sessionStorage.getItem('viralyze_result');
+    if (sessionRaw) {
+      try {
+        const parsed = JSON.parse(sessionRaw) as AnalysisResult;
+        if (parsed.id === id) {
+          setResult(parsed);
+          const ctxRaw = sessionStorage.getItem('viralyze_context');
+          if (ctxRaw) setContext(JSON.parse(ctxRaw));
+          return;
+        }
+      } catch {}
+    }
+
+    // 2. Fall back to localStorage (historical analyses from history panel)
+    const stored = getStoredResult(id);
+    if (stored) {
+      setResult(stored.result);
+      if (stored.context) setContext(stored.context);
+      return;
+    }
+
+    // 3. Not found anywhere — send back
+    router.push('/analyze');
   }, [params.id, router]);
 
   const handleCompetitorAnalyze = async (competitorData: string): Promise<CompetitorAnalysis | null> => {
