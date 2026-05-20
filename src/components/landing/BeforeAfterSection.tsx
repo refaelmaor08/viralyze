@@ -49,6 +49,7 @@ export default function BeforeAfterSection() {
 
   return (
     <section
+      id="before-after"
       className="py-24 px-6 relative overflow-hidden"
       style={{ borderTop: '1px solid rgba(212,168,67,0.07)' }}
     >

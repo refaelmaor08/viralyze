@@ -6,12 +6,10 @@ import Link from 'next/link';
 import { Zap, X, Menu, ChevronLeft } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { label: 'בית',            href: '#hero' },
-  { label: 'איך זה עובד',   href: '#how-it-works' },
-  { label: 'דוגמת ניתוח',   href: '#analysis-example' },
-  { label: 'תוצאות עסקיות', href: '#business-value' },
-  { label: 'פיצ׳רים',       href: '#features' },
-  { label: 'תמחור',          href: '#pricing' },
+  { label: 'בית',      href: '#hero' },
+  { label: 'דמו חי',  href: '#live-demo' },
+  { label: 'לפני/אחרי', href: '#before-after' },
+  { label: 'תמחור',   href: '#pricing' },
 ];
 
 function Logo() {

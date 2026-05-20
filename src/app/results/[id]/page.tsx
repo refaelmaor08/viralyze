@@ -150,20 +150,20 @@ export default function ResultsPage() {
         </motion.div>
 
         {/* Tabs */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 mb-8 justify-end">
+        <div className="flex flex-wrap gap-1.5 mb-8 justify-end">
           {tabs.map((tab) => (
             <motion.button
               key={tab.id}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
                 activeTab === tab.id
                   ? 'bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black'
                   : 'glass text-white/50 hover:text-white'
               }`}
             >
-              <tab.icon className="w-4 h-4" />
+              <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {tab.label}
             </motion.button>
           ))}

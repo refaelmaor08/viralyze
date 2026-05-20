@@ -38,7 +38,7 @@ export default function Footer() {
 
         <div className="mt-8 pt-6 border-t border-[rgba(255,255,255,0.04)] text-center">
           <p className="text-white/20 text-xs leading-relaxed">
-            © 2026 Viralyze. לא קשור ל-TikTok או Instagram. ניתוח ה-AI מבוסס על עקרונות פסיכולוגיית תוכן — ויראליות אינה מובטחת.
+            © 2026 Viralyze · הסרטון מעובד בצורה מאובטחת ואינו נשמר לצמיתות · הניתוח מבוסס על עקרונות פסיכולוגיית תוכן וביצועי אלגוריתם בפועל
           </p>
         </div>
       </div>
