@@ -15,11 +15,11 @@ import CompetitorPanel from '@/components/results/CompetitorPanel';
 type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'competitor';
 
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'scores', label: 'ציונים', icon: BarChart3 },
-  { id: 'feedback', label: 'פידבק', icon: MessageSquare },
-  { id: 'suggestions', label: 'המלצות', icon: Zap },
-  { id: 'fix', label: 'תקן את הסרטון', icon: Scissors },
-  { id: 'competitor', label: 'מתחרים', icon: Search },
+  { id: 'scores',     label: 'ציונים',         icon: BarChart3 },
+  { id: 'feedback',   label: 'מה לשפר',        icon: MessageSquare },
+  { id: 'suggestions',label: 'המלצות',         icon: Zap },
+  { id: 'fix',        label: 'תקן את הסרטון',  icon: Scissors },
+  { id: 'competitor', label: 'מתחרים',         icon: Search },
 ];
 
 export default function ResultsPage() {
@@ -74,7 +74,11 @@ export default function ResultsPage() {
   return (
     <div className="min-h-screen bg-[#080808]">
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.04)_0%,transparent_70%)]" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.06)_0%,transparent_70%)]" />
+        <div
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[400px] h-[200px] blur-3xl opacity-20"
+          style={{ background: `radial-gradient(ellipse,${scoreColor} 0%,transparent 70%)` }}
+        />
       </div>
 
       {/* Nav */}
@@ -121,10 +125,28 @@ export default function ResultsPage() {
               })}
             </p>
           </div>
-          <div className="glass-strong rounded-2xl px-5 py-3 text-center">
-            <div className="text-4xl font-black" style={{ color: scoreColor }}>{viralScore}</div>
-            <div className="text-xs text-white/50 font-medium mt-0.5">פוטנציאל וויראלי</div>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-2xl px-6 py-4 text-center"
+            style={{
+              background: `${scoreColor}10`,
+              border: `1px solid ${scoreColor}35`,
+              boxShadow: `0 0 32px ${scoreColor}20`,
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="text-5xl font-black"
+              style={{ color: scoreColor }}
+            >
+              {viralScore}
+            </motion.div>
+            <div className="text-xs text-white/40 font-medium mt-1">פוטנציאל וויראלי</div>
+          </motion.div>
         </motion.div>
 
         {/* Tabs */}

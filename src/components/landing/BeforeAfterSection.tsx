@@ -105,8 +105,8 @@ export default function BeforeAfterSection() {
               className="mt-5 rounded-xl p-3 text-center"
               style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}
             >
-              <span className="text-2xl font-black text-red-400">300</span>
-              <span className="text-white/40 text-sm mr-1.5">צפיות</span>
+              <span className="text-2xl font-black text-red-400">1,240</span>
+              <span className="text-white/40 text-sm mr-1.5">צפיות · 48 שעות</span>
             </motion.div>
           </motion.div>
 
@@ -171,8 +171,8 @@ export default function BeforeAfterSection() {
               className="mt-5 rounded-xl p-3 text-center"
               style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.18)' }}
             >
-              <span className="text-2xl font-black text-green-400">+340%</span>
-              <span className="text-white/40 text-sm mr-1.5">חשיפה</span>
+              <span className="text-2xl font-black text-green-400">48,600</span>
+              <span className="text-white/40 text-sm mr-1.5">צפיות · 48 שעות</span>
             </motion.div>
           </motion.div>
         </div>

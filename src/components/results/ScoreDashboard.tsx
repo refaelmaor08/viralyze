@@ -11,15 +11,15 @@ interface ScoreDashboardProps {
 }
 
 const scoreConfig = [
-  { key: 'attention', label: 'שמירת קשב' },
-  { key: 'curiosity', label: 'סקרנות' },
-  { key: 'emotionalImpact', label: 'השפעה רגשית' },
-  { key: 'rewatchPotential', label: 'פוטנציאל צפייה חוזרת' },
-  { key: 'shareability', label: 'שיתופיות' },
-  { key: 'commentPotential', label: 'פוטנציאל תגובות' },
-  { key: 'hookStrength', label: 'עוצמת Hook' },
-  { key: 'pacing', label: 'קצב' },
-  { key: 'visualStimulation', label: 'גירוי ויזואלי' },
+  { key: 'attention',         label: 'כמה נשארים לצפות' },
+  { key: 'curiosity',         label: 'סקרנות' },
+  { key: 'emotionalImpact',   label: 'רגש' },
+  { key: 'rewatchPotential',  label: 'ירצו לצפות שוב' },
+  { key: 'shareability',      label: 'ירצו לשתף' },
+  { key: 'commentPotential',  label: 'ירצו להגיב' },
+  { key: 'hookStrength',      label: 'עוצמת הפתיחה' },
+  { key: 'pacing',            label: 'קצב' },
+  { key: 'visualStimulation', label: 'ויזואלי' },
 ];
 
 export default function ScoreDashboard({ result }: ScoreDashboardProps) {
@@ -43,13 +43,19 @@ export default function ScoreDashboard({ result }: ScoreDashboardProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
-          className="glass rounded-2xl p-5 mt-6 text-right"
+          className="rounded-2xl p-5 mt-6 text-right"
+          style={{ background: `${color}08`, border: `1px solid ${color}25` }}
         >
-          <div className="flex items-center justify-end gap-2 mb-2">
-            <span className="text-sm font-semibold" style={{ color }}>פסיקת ה-AI</span>
-            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+          <div className="flex items-center justify-end gap-2 mb-3">
+            <span className="text-sm font-bold" style={{ color }}>פסיקת ה-AI</span>
+            <motion.div
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: color, boxShadow: `0 0 6px ${color}` }}
+            />
           </div>
-          <p className="text-white/80 text-sm leading-relaxed italic">
+          <p className="text-white/75 text-sm leading-relaxed">
             "{result.overallVerdict}"
           </p>
         </motion.div>
@@ -72,7 +78,7 @@ export default function ScoreDashboard({ result }: ScoreDashboardProps) {
           transition={{ delay: 0.3 }}
           className="text-lg font-bold mb-4 text-white/80 text-right"
         >
-          ממדי הביצוע
+          כל הציונים
         </motion.h3>
         <div className="grid grid-cols-3 gap-3">
           {scoreConfig.map((cfg, i) => {

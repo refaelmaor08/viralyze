@@ -1,6 +1,7 @@
 import AnimatedBackgroundClient from '@/components/ui/AnimatedBackgroundClient';
 import Navbar from '@/components/landing/Navbar';
 import HeroSection from '@/components/landing/HeroSection';
+import SocialProofBar from '@/components/landing/SocialProofBar';
 import LiveDemoSection from '@/components/landing/LiveDemoSection';
 import BeforeAfterSection from '@/components/landing/BeforeAfterSection';
 import FinalCTASection from '@/components/landing/FinalCTASection';
@@ -12,6 +13,7 @@ export default function Home() {
       <AnimatedBackgroundClient />
       <Navbar />
       <HeroSection />
+      <SocialProofBar />
       <LiveDemoSection />
       <BeforeAfterSection />
       <FinalCTASection />
