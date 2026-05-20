@@ -40,6 +40,18 @@ export function removeFromHistory(id: string): void {
   } catch {}
 }
 
+export function renameInHistory(id: string, newName: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const entries = getHistory();
+    const idx = entries.findIndex((e) => e.id === id);
+    if (idx !== -1) {
+      entries[idx] = { ...entries[idx], fileName: newName };
+      localStorage.setItem(KEY, JSON.stringify(entries));
+    }
+  } catch {}
+}
+
 export function clearHistory(): void {
   if (typeof window === 'undefined') return;
   try { localStorage.removeItem(KEY); } catch {}

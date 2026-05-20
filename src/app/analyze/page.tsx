@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, AlertCircle } from 'lucide-react';
+import { Zap, AlertCircle, LogIn } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
 import AnalysisHistory from '@/components/analyze/AnalysisHistory';
+import { getUser, type AuthUser } from '@/lib/auth';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
@@ -33,6 +34,9 @@ export default function AnalyzePage() {
   });
   // Safety timer: ensures framesReady=true after at most 1s regardless of what else is happening
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [user, setUser] = useState<AuthUser | null>(null);
+  useEffect(() => { setUser(getUser()); }, []);
 
   const clearSafetyTimer = useCallback(() => {
     if (safetyTimerRef.current) {
@@ -286,6 +290,35 @@ export default function AnalyzePage() {
                 ה-AI יצפה בסרטון שלך ויסביר בדיוק מה עלול לפגוע בחשיפה שלו.
               </motion.p>
             </div>
+
+            {/* Login nudge — shown only when logged out */}
+            {!user && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="mb-5 flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
+                style={{
+                  background: 'rgba(212,168,67,0.05)',
+                  border: '1px solid rgba(212,168,67,0.15)',
+                }}
+              >
+                <Link href="/login?redirect=/analyze">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="flex items-center gap-1.5 text-xs font-bold text-black px-3 py-1.5 rounded-lg flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)' }}
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    כניסה
+                  </motion.button>
+                </Link>
+                <p className="text-xs text-white/40 text-right">
+                  היכנס כדי לשמור את הניתוחים שלך ולגשת אליהם בכל מכשיר
+                </p>
+              </motion.div>
+            )}
 
             {/* History */}
             <AnalysisHistory />

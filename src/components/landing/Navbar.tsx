@@ -1,15 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Zap, X, Menu, ChevronLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Zap, X, Menu, ChevronLeft, LogOut, Clock } from 'lucide-react';
+import { getUser, clearUser, type AuthUser } from '@/lib/auth';
 
 const NAV_ITEMS = [
-  { label: 'בית',      href: '#hero' },
-  { label: 'דמו חי',  href: '#live-demo' },
-  { label: 'לפני/אחרי', href: '#before-after' },
-  { label: 'תמחור',   href: '#pricing' },
+  { label: 'בית',        href: '#hero' },
+  { label: 'דמו חי',    href: '#live-demo' },
+  { label: 'לפני / אחרי', href: '#before-after' },
+  { label: 'תמחור',     href: '#pricing' },
 ];
 
 function Logo() {
@@ -26,9 +28,92 @@ function Logo() {
   );
 }
 
+function UserMenu({ user }: { user: AuthUser }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const initial = user.email[0].toUpperCase();
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  function handleSignOut() {
+    clearUser();
+    setOpen(false);
+    router.push('/');
+    router.refresh();
+  }
+
+  return (
+    <div className="relative flex-shrink-0" ref={ref}>
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setOpen((o) => !o)}
+        className="w-9 h-9 rounded-full font-black text-sm text-black flex items-center justify-center"
+        style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)' }}
+        aria-label="תפריט משתמש"
+      >
+        {initial}
+      </motion.button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.96 }}
+            transition={{ duration: 0.18 }}
+            className="absolute top-12 left-0 rounded-2xl overflow-hidden min-w-[200px]"
+            style={{
+              background: 'rgba(10,10,10,0.97)',
+              border: '1px solid rgba(212,168,67,0.2)',
+              backdropFilter: 'blur(32px)',
+              WebkitBackdropFilter: 'blur(32px)',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.8)',
+            }}
+          >
+            <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.06)]">
+              <p className="text-xs text-white/35 mb-0.5">מחובר כ</p>
+              <p className="text-sm text-white/70 font-medium truncate" dir="ltr">{user.email}</p>
+            </div>
+            <div className="p-2">
+              <Link
+                href="/analyze"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
+              >
+                <Clock className="w-4 h-4 text-[#D4A843]/60 flex-shrink-0" />
+                <span className="text-sm text-white/65">היסטוריית ניתוחים</span>
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
+              >
+                <LogOut className="w-4 h-4 text-white/30 flex-shrink-0" />
+                <span className="text-sm text-white/45">צא מהחשבון</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    setUser(getUser());
+  }, []);
 
   // Detect scroll for background opacity
   useEffect(() => {
@@ -87,16 +172,31 @@ export default function Navbar() {
         />
 
         <div className="relative max-w-6xl mx-auto px-5 py-3.5 flex items-center justify-between gap-4">
-          {/* Left slot (RTL: visually right) — CTA on desktop */}
-          <Link href="/analyze" className="hidden sm:block flex-shrink-0">
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-bold px-5 py-2.5 rounded-xl text-sm shadow-lg shadow-[rgba(212,168,67,0.28)] hover:shadow-[rgba(212,168,67,0.45)] transition-shadow"
-            >
-              נתח את הסרטון שלי
-            </motion.button>
-          </Link>
+          {/* Left slot (RTL: visually right) — CTA + user state on desktop */}
+          <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
+            {user ? (
+              <UserMenu user={user} />
+            ) : (
+              <Link href="/login">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="text-white/55 hover:text-white text-sm font-semibold transition-colors px-2 py-1"
+                >
+                  כניסה
+                </motion.button>
+              </Link>
+            )}
+            <Link href="/analyze">
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-bold px-5 py-2.5 rounded-xl text-sm shadow-lg shadow-[rgba(212,168,67,0.28)] hover:shadow-[rgba(212,168,67,0.45)] transition-shadow"
+              >
+                נתח את הסרטון שלי
+              </motion.button>
+            </Link>
+          </div>
 
           {/* Desktop nav links */}
           <div className="hidden lg:flex items-center gap-6 flex-1 justify-center">
@@ -234,7 +334,7 @@ export default function Navbar() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.3 }}
-                className="p-4"
+                className="p-4 space-y-2"
               >
                 <Link href="/analyze" onClick={() => setIsOpen(false)}>
                   <motion.button
@@ -246,7 +346,22 @@ export default function Navbar() {
                     נתח סרטון עכשיו
                   </motion.button>
                 </Link>
-                <p className="text-center text-xs text-white/22 mt-3 leading-relaxed">
+                {user ? (
+                  <button
+                    onClick={() => { clearUser(); setUser(null); setIsOpen(false); }}
+                    className="w-full py-3 rounded-xl text-sm text-white/35 hover:text-white/55 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    צא מהחשבון ({user.email.split('@')[0]})
+                  </button>
+                ) : (
+                  <Link href="/login" onClick={() => setIsOpen(false)}>
+                    <button className="w-full py-3 rounded-xl text-sm text-white/45 hover:text-white/65 transition-colors">
+                      כניסה לחשבון
+                    </button>
+                  </Link>
+                )}
+                <p className="text-center text-xs text-white/22 pt-1 leading-relaxed">
                   ניתוח ראשון חינם · ללא כרטיס אשראי · תוצאות תוך דקה
                 </p>
               </motion.div>
