@@ -9,10 +9,11 @@ import type { AuthUser } from '@/lib/auth';
 import { useAuth } from '@/lib/authContext';
 
 const NAV_ITEMS = [
-  { label: 'בית',        href: '#hero' },
-  { label: 'דמו חי',    href: '#live-demo' },
+  { label: 'בית',          href: '#hero' },
+  { label: 'איך זה עובד',  href: '#how-it-works' },
+  { label: 'דמו חי',      href: '#live-demo' },
   { label: 'לפני / אחרי', href: '#before-after' },
-  { label: 'תמחור',     href: '#pricing' },
+  { label: 'תמחור',       href: '#pricing' },
 ];
 
 function Logo() {
