@@ -118,7 +118,7 @@ function MiniAnalysisPreview() {
       initial={{ opacity: 0, y: 28, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.8, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
-      className="mx-auto max-w-xl mt-10"
+      className="mx-auto max-w-xl mt-8 sm:mt-10"
     >
       <div
         className="rounded-2xl p-4 text-right"
@@ -170,7 +170,7 @@ function MiniAnalysisPreview() {
 // ── Main section ───────────────────────────────────────────────────────────────
 export default function HeroSection() {
   return (
-    <section id="hero" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden grid-pattern pt-24 pb-20">
+    <section id="hero" className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden grid-pattern pt-20 sm:pt-24 pb-14 sm:pb-20">
       <HeroAnimatedBG />
       <FloatingParticles />
       <LiveActivityFeed />
@@ -263,7 +263,7 @@ export default function HeroSection() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
-          className="inline-flex items-center gap-2.5 glass-strong px-5 py-2.5 rounded-full mb-7"
+          className="inline-flex items-center gap-2.5 glass-strong px-4 py-2 sm:px-5 sm:py-2.5 rounded-full mb-5 sm:mb-7"
         >
           <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="w-2 h-2 rounded-full bg-[#D4A843]" />
           <span className="text-sm text-[#D4A843] font-semibold">
@@ -276,7 +276,7 @@ export default function HeroSection() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-          className="text-5xl sm:text-6xl md:text-7xl font-black leading-[1.07] tracking-tight mb-5"
+          className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.07] tracking-tight mb-4 sm:mb-5"
         >
           <span className="text-white">למה הסרטון שלך</span>
           <br />
@@ -288,7 +288,7 @@ export default function HeroSection() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.28 }}
-          className="text-base md:text-lg text-white/55 max-w-xl mx-auto mb-9 leading-relaxed"
+          className="text-sm sm:text-base md:text-lg text-white/55 max-w-xl mx-auto mb-7 sm:mb-9 leading-relaxed"
         >
           Viralyze רואה בדיוק מה גורם לאנשים לגלול — ואומר לך מה לתקן.
         </motion.p>

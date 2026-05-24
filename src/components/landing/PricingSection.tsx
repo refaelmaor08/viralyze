@@ -74,7 +74,7 @@ export default function PricingSection() {
   return (
     <section
       id="pricing"
-      className="py-28 px-6 relative overflow-hidden"
+      className="py-16 sm:py-28 px-4 sm:px-6 relative overflow-hidden"
       style={{ borderTop: '1px solid rgba(212,168,67,0.07)' }}
     >
       <div className="absolute inset-0 pointer-events-none">
@@ -87,18 +87,18 @@ export default function PricingSection() {
           initial={{ opacity: 0, y: 24 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-10 sm:mb-16"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={inView ? { opacity: 1, scale: 1 } : {}}
             transition={{ delay: 0.1 }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-4 sm:mb-6"
             style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)' }}
           >
             <span className="text-[#D4A843] text-xs font-bold tracking-widest uppercase">תמחור</span>
           </motion.div>
-          <h2 className="text-4xl md:text-5xl font-black mb-5">
+          <h2 className="text-3xl md:text-5xl font-black mb-4 sm:mb-5">
             <span className="text-white">השקעה חכמה.</span>{' '}
             <span className="gold-text">תוצאות אמיתיות.</span>
           </h2>
@@ -112,7 +112,7 @@ export default function PricingSection() {
           initial={{ opacity: 0, y: 10 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: 0.2 }}
-          className="flex justify-center mb-12"
+          className="flex justify-center mb-8 sm:mb-12"
         >
           <div
             className="flex items-center gap-3 px-5 py-2.5 rounded-full text-sm"

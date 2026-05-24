@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap, Plus, User, CreditCard, LogOut, BarChart3,
   Sparkles, TrendingUp, Activity, ChevronRight,
-  Lock, ArrowUpRight, Target, MessageSquare, Clock,
+  Lock, ArrowUpRight, Target, MessageSquare, Clock, Home,
 } from 'lucide-react';
 import { useAuth } from '@/lib/authContext';
 import AuthGuard from '@/components/ui/AuthGuard';
@@ -191,14 +191,14 @@ function DashboardContent() {
         </Link>
       </nav>
 
-      <div className="relative z-10 max-w-2xl mx-auto px-4 pt-6 pb-24 space-y-4">
+      <div className="relative z-10 max-w-2xl mx-auto px-4 pt-5 pb-28 space-y-3 sm:space-y-4">
 
         {/* ── HERO GREETING ─────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="rounded-3xl p-6 relative overflow-hidden"
+          className="rounded-3xl p-5 sm:p-6 relative overflow-hidden"
           style={{
             background: 'linear-gradient(145deg, rgba(212,168,67,0.09) 0%, rgba(212,168,67,0.03) 50%, rgba(8,8,8,0) 100%)',
             border: '1px solid rgba(212,168,67,0.18)',
@@ -464,10 +464,10 @@ function DashboardContent() {
           className="grid grid-cols-4 gap-2"
         >
           {[
-            { href: '/analyze',        icon: Zap,          label: 'ניתוח',      color: '#D4A843' },
-            { href: '/creator',        icon: Sparkles,     label: 'AI Coach',   color: '#a78bfa' },
-            { href: '/profile',        icon: User,         label: 'פרופיל',     color: 'rgba(255,255,255,0.4)' },
-            { href: '/profile#billing',icon: CreditCard,   label: 'תשלומים',   color: 'rgba(255,255,255,0.4)' },
+            { href: '/analyze',        icon: Zap,      label: 'ניתוח',    color: '#D4A843' },
+            { href: '/creator',        icon: Sparkles, label: 'AI Coach', color: '#a78bfa' },
+            { href: '/profile',        icon: User,     label: 'פרופיל',   color: 'rgba(255,255,255,0.4)' },
+            { href: '/',               icon: Home,     label: 'בית',      color: 'rgba(255,255,255,0.4)' },
           ].map((item) => (
             <Link key={item.label} href={item.href}>
               <motion.div
