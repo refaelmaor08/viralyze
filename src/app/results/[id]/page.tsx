@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw } from 'lucide-react';
+import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw, LayoutDashboard, Clock } from 'lucide-react';
 import { AnalysisResult, CompetitorAnalysis } from '@/types';
 import { getStoredResult } from '@/lib/history';
 import ScoreDashboard from '@/components/results/ScoreDashboard';
@@ -12,14 +12,16 @@ import FeedbackPanel from '@/components/results/FeedbackPanel';
 import SuggestionsPanel from '@/components/results/SuggestionsPanel';
 import FixMyVideo from '@/components/results/FixMyVideo';
 import CompetitorPanel from '@/components/results/CompetitorPanel';
+import VisualTimeline from '@/components/results/VisualTimeline';
 
-type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'competitor';
+type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'timeline' | 'competitor';
 
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'scores',     label: 'ציונים',         icon: BarChart3 },
   { id: 'feedback',   label: 'מה לשפר',        icon: MessageSquare },
   { id: 'suggestions',label: 'המלצות',         icon: Zap },
-  { id: 'fix',        label: 'תקן את הסרטון',  icon: Scissors },
+  { id: 'fix',        label: 'תקן',            icon: Scissors },
+  { id: 'timeline',   label: 'ציר זמן',        icon: Clock },
   { id: 'competitor', label: 'מתחרים',         icon: Search },
 ];
 
@@ -102,18 +104,29 @@ export default function ResultsPage() {
       </div>
 
       {/* Nav */}
-      <nav className="sticky top-0 z-50 border-b border-[rgba(212,168,67,0.06)] bg-[rgba(8,8,8,0.9)] backdrop-blur-xl px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/analyze">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-bold px-4 py-2 rounded-xl text-sm"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              נתח סרטון נוסף
-            </motion.button>
-          </Link>
+      <nav className="sticky top-0 z-50 border-b border-[rgba(212,168,67,0.06)] bg-[rgba(8,8,8,0.92)] backdrop-blur-xl px-6 py-3.5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link href="/analyze">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-bold px-3.5 py-1.5 rounded-xl text-xs"
+              >
+                <RefreshCw className="w-3 h-3" />
+                ניתוח חדש
+              </motion.button>
+            </Link>
+            <Link href="/dashboard">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                className="flex items-center gap-1.5 text-xs text-white/35 hover:text-white/65 transition-colors px-2 py-1.5"
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                לוח בקרה
+              </motion.button>
+            </Link>
+          </div>
 
           <Link href="/" className="flex items-center gap-2">
             <span className="font-black text-base">
@@ -202,6 +215,7 @@ export default function ResultsPage() {
             {activeTab === 'feedback' && <FeedbackPanel feedback={result.feedback} />}
             {activeTab === 'suggestions' && <SuggestionsPanel suggestions={result.suggestions} />}
             {activeTab === 'fix' && <FixMyVideo suggestions={result.fixMyVideo} />}
+            {activeTab === 'timeline' && <VisualTimeline entries={result.timeline ?? []} />}
             {activeTab === 'competitor' && (
               <CompetitorPanel
                 onAnalyze={handleCompetitorAnalyze}
@@ -213,9 +227,9 @@ export default function ResultsPage() {
 
         {/* Bottom nav */}
         <div className="mt-10 pt-6 border-t border-[rgba(212,168,67,0.08)] flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-1.5 text-white/40 hover:text-white text-sm transition-colors">
+          <Link href="/dashboard" className="flex items-center gap-1.5 text-white/35 hover:text-white/65 text-sm transition-colors">
             <ArrowRight className="w-4 h-4" />
-            חזור לדף הבית
+            לוח בקרה
           </Link>
           <Link href="/analyze">
             <motion.button

@@ -4,15 +4,11 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import {
-  Zap, Mail, ArrowRight, AlertCircle, KeyRound, Info,
-} from 'lucide-react';
+import { Zap, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase, supabaseReady } from '@/lib/supabase';
 import { setUser } from '@/lib/auth';
 import { useAuth } from '@/lib/authContext';
 import { migrateAnonymousHistory } from '@/lib/history';
-
-// ── Icons ───────────────────────────────────────────────────────────────────
 
 function GoogleIcon() {
   return (
@@ -33,44 +29,34 @@ function AppleIcon() {
   );
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-type Step =
-  | 'providers'
-  | 'email-form'
-  | 'email-sent'
-  | 'passkey';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
+type Step = 'providers' | 'email-form' | 'email-sent';
+type EmailMode = 'magic' | 'password';
 
 function callbackUrl(next: string) {
   if (typeof window === 'undefined') return '';
   return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') ?? '/analyze';
-  const errorParam = searchParams.get('error');
+  const redirect = searchParams.get('redirect') ?? '/dashboard';
 
   const { refresh } = useAuth();
 
   const [step, setStep] = useState<Step>('providers');
+  const [emailMode, setEmailMode] = useState<EmailMode>('magic');
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState<string | null>(null); // which provider is loading
-  const [error, setError] = useState(errorParam ?? '');
-
-  // ── OAuth handlers ──────────────────────────────────────────────────────────
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   async function handleGoogle() {
     setError('');
     if (!supabaseReady || !supabase) {
-      // TODO: Add NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local
-      // TODO: Enable Google OAuth in Supabase Dashboard → Authentication → Providers → Google
-      setError('Google Sign In זמין לאחר הגדרת Supabase — ראה TODO בקוד');
+      setError('כניסה עם Google תהיה זמינה בקרוב');
       return;
     }
     setLoading('google');
@@ -85,11 +71,7 @@ export default function LoginClient() {
   async function handleApple() {
     setError('');
     if (!supabaseReady || !supabase) {
-      // TODO: Add NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local
-      // TODO: Enable Apple OAuth in Supabase Dashboard → Authentication → Providers → Apple
-      // TODO: Requires Apple Developer account + Services ID + private key
-      // On iOS Safari, this will trigger Face ID / Touch ID automatically
-      setError('Apple Sign In זמין לאחר הגדרת Supabase — ראה TODO בקוד');
+      setError('כניסה עם Apple תהיה זמינה בקרוב');
       return;
     }
     setLoading('apple');
@@ -101,17 +83,6 @@ export default function LoginClient() {
     setLoading(null);
   }
 
-  async function handlePasskey() {
-    setError('');
-    // TODO: Supabase Passkey/WebAuthn support via supabase.auth.signInWithPasskey()
-    // Requires: Supabase project with MFA enabled + rpId configured for your domain
-    // On iPhone with Face ID: works automatically when WebAuthn is configured
-    // See: https://supabase.com/docs/guides/auth/auth-mfa
-    setStep('passkey');
-  }
-
-  // ── Email magic link ────────────────────────────────────────────────────────
-
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = email.trim().toLowerCase();
@@ -120,99 +91,136 @@ export default function LoginClient() {
       return;
     }
 
+    if (emailMode === 'magic') {
+      setLoading('email');
+      setError('');
+
+      if (supabaseReady && supabase) {
+        const { error: err } = await supabase.auth.signInWithOtp({
+          email: trimmed,
+          options: { emailRedirectTo: callbackUrl(redirect), shouldCreateUser: true },
+        });
+        setLoading(null);
+        if (err) { setError(err.message); return; }
+        setStep('email-sent');
+      } else {
+        await new Promise((r) => setTimeout(r, 700));
+        const authUser = { email: trimmed, provider: 'email' as const, plan: 'free' as const };
+        setUser(authUser);
+        migrateAnonymousHistory(trimmed);
+        refresh();
+        setLoading(null);
+        router.push(redirect);
+      }
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setError('הסיסמה חייבת להכיל לפחות 6 תווים');
+      return;
+    }
     setLoading('email');
     setError('');
 
     if (supabaseReady && supabase) {
-      // Real: send magic link via Supabase
-      const { error: err } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: {
-          emailRedirectTo: callbackUrl(redirect),
-          shouldCreateUser: true,
-        },
-      });
-      setLoading(null);
-      if (err) { setError(err.message); return; }
-      setStep('email-sent');
+      if (isSignup) {
+        const { error: err } = await supabase.auth.signUp({
+          email: trimmed,
+          password,
+          options: { emailRedirectTo: callbackUrl(redirect) },
+        });
+        setLoading(null);
+        if (err) { setError(err.message); return; }
+        setStep('email-sent');
+      } else {
+        const { error: err } = await supabase.auth.signInWithPassword({ email: trimmed, password });
+        setLoading(null);
+        if (err) {
+          setError(err.message.includes('Invalid login') ? 'אימייל או סיסמה שגויים' : err.message);
+          return;
+        }
+        router.push(redirect);
+      }
     } else {
-      // Demo fallback (localStorage only — no real session)
-      await new Promise((r) => setTimeout(r, 700));
-      const authUser = { email: trimmed, provider: 'email' as const };
+      await new Promise((r) => setTimeout(r, 600));
+      const authUser = { email: trimmed, provider: 'email' as const, plan: 'free' as const };
       setUser(authUser);
       migrateAnonymousHistory(trimmed);
       refresh();
+      setLoading(null);
       router.push(redirect);
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   return (
-    <div className="min-h-screen bg-[#080808] flex flex-col items-center justify-center px-6 py-12">
-      {/* Ambient glow */}
+    <div className="min-h-screen bg-[#060606] flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden">
+
+      {/* Cinematic background */}
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.08)_0%,transparent_70%)]" />
+        {/* Large gold glow top-center */}
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[500px] rounded-full opacity-[0.12]"
+          style={{ background: 'radial-gradient(ellipse, #D4A843 0%, transparent 65%)' }} />
+        {/* Subtle bottom ambient */}
+        <div className="absolute bottom-0 left-0 w-[400px] h-[300px] opacity-[0.04]"
+          style={{ background: 'radial-gradient(circle, #F0C060 0%, transparent 70%)' }} />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[300px] opacity-[0.03]"
+          style={{ background: 'radial-gradient(circle, #D4A843 0%, transparent 70%)' }} />
+        {/* Fine grain overlay */}
+        <div className="absolute inset-0 opacity-[0.015]"
+          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\' opacity=\'1\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
       </div>
 
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 mb-10 relative z-10">
-        <span className="text-2xl font-black">
-          <span className="text-white">Viral</span>
-          <span className="gold-text">yze</span>
-        </span>
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4A843] to-[#F0C060] flex items-center justify-center">
-          <Zap className="w-5 h-5 text-black fill-black" />
-        </div>
-      </Link>
-
-      {/* Demo mode notice */}
-      {!supabaseReady && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-sm mb-4 relative z-10 flex items-start gap-2.5 px-4 py-3 rounded-xl"
-          style={{
-            background: 'rgba(212,168,67,0.06)',
-            border: '1px solid rgba(212,168,67,0.18)',
-          }}
-        >
-          <Info className="w-4 h-4 text-[#D4A843]/70 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-white/45 leading-relaxed">
-            מצב פיתוח — Supabase לא מוגדר. Google ו-Apple Sign In זמינים לאחר הגדרת .env.local.
-            כניסה עם אימייל עובדת ומבוססת על localStorage.
-          </p>
-        </motion.div>
-      )}
-
-      {/* Card */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Link href="/" className="flex items-center gap-2.5 mb-10 relative z-10">
+          <span className="text-2xl font-black">
+            <span className="text-white">Viral</span>
+            <span className="gold-text">yze</span>
+          </span>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4A843] to-[#F0C060] flex items-center justify-center shadow-lg"
+            style={{ boxShadow: '0 0 24px rgba(212,168,67,0.4)' }}>
+            <Zap className="w-5 h-5 text-black fill-black" />
+          </div>
+        </Link>
+      </motion.div>
+
+      {/* Auth card */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.08 }}
         className="w-full max-w-sm relative z-10"
         style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(212,168,67,0.15)',
+          background: 'linear-gradient(160deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)',
+          border: '1px solid rgba(212,168,67,0.18)',
           borderRadius: '24px',
-          padding: '36px 32px',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
+          padding: '36px 30px',
+          backdropFilter: 'blur(32px)',
+          WebkitBackdropFilter: 'blur(32px)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset',
         }}
       >
+        {/* Top glow line */}
+        <div className="absolute top-0 inset-x-8 h-px rounded-full"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(212,168,67,0.5), transparent)' }} />
+
         <AnimatePresence mode="wait">
 
-          {/* ── Providers ── */}
+          {/* Providers step */}
           {step === 'providers' && (
             <motion.div
               key="providers"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0, x: -16 }}
+              exit={{ opacity: 0, x: -12 }}
               transition={{ duration: 0.2 }}
             >
               <h1 className="text-2xl font-black text-white text-center mb-1">ברוך הבא</h1>
-              <p className="text-white/40 text-sm text-center mb-8">היכנס לחשבון Viralyze שלך</p>
+              <p className="text-white/35 text-sm text-center mb-8">היכנס לחשבון Viralyze שלך</p>
 
               {error && (
                 <div className="mb-4 flex items-start gap-2 text-red-400 text-xs p-3 rounded-xl"
@@ -222,79 +230,76 @@ export default function LoginClient() {
                 </div>
               )}
 
-              <div className="space-y-3 mb-5">
-                {/* Google */}
-                <SocialButton
-                  icon={<GoogleIcon />}
-                  label="המשך עם Google"
-                  loading={loading === 'google'}
-                  onClick={handleGoogle}
-                />
-                {/* Apple */}
-                <SocialButton
-                  icon={<AppleIcon />}
-                  label="המשך עם Apple"
-                  loading={loading === 'apple'}
-                  onClick={handleApple}
-                  note="Face ID / Touch ID בנייד"
-                />
-                {/* Passkey */}
-                <SocialButton
-                  icon={<KeyRound className="w-4.5 h-4.5" />}
-                  label="כניסה עם Passkey"
-                  loading={false}
-                  onClick={handlePasskey}
-                  note="ביומטרי / מפתח גישה"
-                  muted
-                />
+              <div className="space-y-2.5 mb-5">
+                <SocialButton icon={<GoogleIcon />} label="המשך עם Google" loading={loading === 'google'} onClick={handleGoogle} />
+                <SocialButton icon={<AppleIcon />} label="המשך עם Apple" loading={loading === 'apple'} onClick={handleApple} note="Face ID / Touch ID" />
               </div>
 
               <div className="flex items-center gap-3 mb-5">
                 <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
-                <span className="text-white/25 text-xs">או</span>
+                <span className="text-white/20 text-xs">או</span>
                 <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
               </div>
 
-              <button
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => { setStep('email-form'); setError(''); }}
                 className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-semibold text-sm transition-all"
                 style={{
-                  background: 'rgba(212,168,67,0.08)',
-                  border: '1px solid rgba(212,168,67,0.25)',
+                  background: 'rgba(212,168,67,0.07)',
+                  border: '1px solid rgba(212,168,67,0.22)',
                   color: '#D4A843',
                 }}
               >
                 <Mail className="w-4 h-4" />
                 המשך עם אימייל
-              </button>
+              </motion.button>
+
+              {/* Value prop */}
+              <div className="mt-6 pt-5 border-t text-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <p className="text-xs text-white/20 leading-relaxed">
+                  ניתוח ניסיון חינמי · ללא כרטיס אשראי
+                </p>
+              </div>
             </motion.div>
           )}
 
-          {/* ── Email form ── */}
+          {/* Email form step */}
           {step === 'email-form' && (
             <motion.div
               key="email-form"
-              initial={{ opacity: 0, x: 16 }}
+              initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
               <button
-                onClick={() => { setStep('providers'); setError(''); setEmail(''); }}
+                onClick={() => { setStep('providers'); setError(''); setEmail(''); setPassword(''); }}
                 className="flex items-center gap-1.5 text-white/30 hover:text-white/55 text-xs mb-6 transition-colors"
               >
                 <ArrowRight className="w-3.5 h-3.5" />
                 חזור
               </button>
 
-              <h2 className="text-xl font-black text-white text-center mb-1">
-                {supabaseReady ? 'כניסה עם Magic Link' : 'כניסה עם אימייל'}
-              </h2>
-              <p className="text-white/40 text-sm text-center mb-7">
-                {supabaseReady
-                  ? 'נשלח לך קישור כניסה למייל — ללא סיסמה'
-                  : 'הכנס את האימייל שלך כדי להמשיך'}
-              </p>
+              {/* Mode tabs */}
+              <div className="flex rounded-xl overflow-hidden mb-6"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                {(['magic', 'password'] as EmailMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => { setEmailMode(m); setError(''); }}
+                    className="flex-1 py-2.5 text-xs font-semibold transition-all"
+                    style={{
+                      background: emailMode === m ? 'rgba(212,168,67,0.15)' : 'transparent',
+                      color: emailMode === m ? '#D4A843' : 'rgba(255,255,255,0.35)',
+                      borderRadius: m === 'magic' ? '10px 0 0 10px' : '0 10px 10px 0',
+                    }}
+                  >
+                    {m === 'magic' ? 'Magic Link' : 'סיסמה'}
+                  </button>
+                ))}
+              </div>
 
               <form onSubmit={handleEmailSubmit} className="space-y-3">
                 <input
@@ -307,34 +312,73 @@ export default function LoginClient() {
                   className="w-full px-4 py-3.5 rounded-xl text-sm text-white placeholder-white/20 outline-none transition-all"
                   style={{
                     background: 'rgba(255,255,255,0.05)',
-                    border: error
-                      ? '1px solid rgba(239,68,68,0.5)'
-                      : '1px solid rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.1)',
                   }}
                 />
+
+                {emailMode === 'password' && (
+                  <>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                        placeholder="סיסמה (לפחות 6 תווים)"
+                        className="w-full px-4 py-3.5 rounded-xl text-sm text-white placeholder-white/20 outline-none transition-all"
+                        style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          paddingLeft: '2.75rem',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="absolute top-1/2 -translate-y-1/2 left-3 text-white/30 hover:text-white/60 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      <span className="text-xs text-white/30">
+                        {isSignup ? 'יש לך כבר חשבון?' : 'אין לך חשבון?'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setIsSignup((v) => !v); setError(''); }}
+                        className="text-xs text-[#D4A843] hover:text-[#F0C060] transition-colors font-semibold"
+                      >
+                        {isSignup ? 'כניסה' : 'הרשמה'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
                 {error && (
                   <div className="flex items-center gap-1.5 text-red-400 text-xs">
                     <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                     {error}
                   </div>
                 )}
+
                 <motion.button
                   type="submit"
-                  disabled={loading === 'email'}
-                  whileHover={{ scale: loading === 'email' ? 1 : 1.02 }}
+                  disabled={!!loading}
+                  whileHover={{ scale: loading ? 1 : 1.01, boxShadow: '0 0 24px rgba(212,168,67,0.35)' }}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full py-3.5 rounded-xl font-black text-sm text-black flex items-center justify-center gap-2 disabled:opacity-60"
+                  className="w-full py-3.5 rounded-xl font-black text-sm text-black flex items-center justify-center gap-2 disabled:opacity-60 mt-1"
                   style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)' }}
                 >
                   {loading === 'email' ? (
                     <div className="w-4 h-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
-                  ) : supabaseReady ? 'שלח Magic Link' : 'המשך'}
+                  ) : emailMode === 'magic' ? 'שלח קישור כניסה' : isSignup ? 'צור חשבון' : 'כניסה'}
                 </motion.button>
               </form>
             </motion.div>
           )}
 
-          {/* ── Email sent ── */}
+          {/* Email sent step */}
           {step === 'email-sent' && (
             <motion.div
               key="email-sent"
@@ -342,63 +386,29 @@ export default function LoginClient() {
               animate={{ opacity: 1, scale: 1 }}
               className="text-center py-4"
             >
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
-                style={{ background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.25)' }}
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', damping: 14 }}
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(212,168,67,0.15), rgba(240,192,96,0.08))',
+                  border: '1px solid rgba(212,168,67,0.3)',
+                  boxShadow: '0 0 32px rgba(212,168,67,0.15)',
+                }}
               >
                 <Mail className="w-7 h-7 text-[#D4A843]" />
-              </div>
+              </motion.div>
               <h2 className="text-xl font-black text-white mb-2">בדוק את המייל שלך</h2>
-              <p className="text-white/45 text-sm leading-relaxed mb-6">
-                שלחנו קישור כניסה ל-<span className="text-white/70" dir="ltr">{email}</span>.
-                <br />
-                לחץ על הקישור כדי להיכנס לחשבון.
+              <p className="text-white/40 text-sm leading-relaxed mb-6">
+                שלחנו קישור כניסה ל-<span className="text-white/65" dir="ltr">{email}</span>.<br />
+                לחץ על הקישור כדי להיכנס.
               </p>
               <button
                 onClick={() => { setStep('email-form'); setError(''); }}
-                className="text-xs text-white/30 hover:text-white/55 transition-colors"
+                className="text-xs text-white/25 hover:text-white/50 transition-colors"
               >
                 לא קיבלת? שנה אימייל
-              </button>
-            </motion.div>
-          )}
-
-          {/* ── Passkey (TODO) ── */}
-          {step === 'passkey' && (
-            <motion.div
-              key="passkey"
-              initial={{ opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <button
-                onClick={() => setStep('providers')}
-                className="flex items-center gap-1.5 text-white/30 hover:text-white/55 text-xs mb-6 transition-colors"
-              >
-                <ArrowRight className="w-3.5 h-3.5" />
-                חזור
-              </button>
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
-                style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)' }}
-              >
-                <KeyRound className="w-7 h-7 text-[#D4A843]" />
-              </div>
-              <h2 className="text-xl font-black text-white text-center mb-2">Passkey / Face ID</h2>
-              <p className="text-white/45 text-sm text-center leading-relaxed mb-6">
-                כניסה ביומטרית דרך Passkey בקרוב.
-                <br />
-                בינתיים השתמש באימייל או Google.
-              </p>
-              {/* TODO: Implement supabase.auth.signInWithPasskey() when Supabase MFA with WebAuthn is enabled */}
-              <button
-                onClick={() => setStep('email-form')}
-                className="w-full py-3.5 rounded-xl font-bold text-sm text-[#D4A843] transition-all"
-                style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.22)' }}
-              >
-                <Mail className="w-4 h-4 inline ml-2" />
-                כניסה עם אימייל במקום
               </button>
             </motion.div>
           )}
@@ -406,39 +416,38 @@ export default function LoginClient() {
         </AnimatePresence>
       </motion.div>
 
-      <p className="text-white/18 text-xs mt-6 text-center max-w-xs leading-relaxed relative z-10">
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="text-white/15 text-xs mt-6 text-center max-w-xs leading-relaxed relative z-10"
+      >
         בלחיצה על המשך, אתה מסכים לתנאי השימוש ומדיניות הפרטיות שלנו.
-      </p>
+      </motion.p>
     </div>
   );
 }
 
-// ── Sub-component ────────────────────────────────────────────────────────────
-
 function SocialButton({
-  icon,
-  label,
-  loading,
-  onClick,
-  note,
-  muted = false,
+  icon, label, loading, onClick, note,
 }: {
   icon: React.ReactNode;
   label: string;
   loading: boolean;
   onClick: () => void;
   note?: string;
-  muted?: boolean;
 }) {
   return (
-    <button
+    <motion.button
+      whileHover={{ scale: 1.01, background: 'rgba(255,255,255,0.08)' }}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
       disabled={loading}
-      className="w-full flex items-center gap-3 py-3 px-4 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 hover:bg-white/8 active:scale-[0.98]"
+      className="w-full flex items-center gap-3 py-3 px-4 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 active:scale-[0.98]"
       style={{
-        background: muted ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)',
-        border: `1px solid rgba(255,255,255,${muted ? '0.07' : '0.1'})`,
-        color: muted ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.85)',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.09)',
+        color: 'rgba(255,255,255,0.8)',
       }}
     >
       <span className="flex-shrink-0">
@@ -447,9 +456,7 @@ function SocialButton({
         ) : icon}
       </span>
       <span className="flex-1 text-right">{label}</span>
-      {note && !loading && (
-        <span className="text-[10px] text-white/20 flex-shrink-0">{note}</span>
-      )}
-    </button>
+      {note && !loading && <span className="text-[10px] text-white/18 flex-shrink-0">{note}</span>}
+    </motion.button>
   );
 }

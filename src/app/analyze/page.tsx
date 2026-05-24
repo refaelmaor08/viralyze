@@ -1,42 +1,46 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, AlertCircle, LogIn } from 'lucide-react';
+import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
-import AnalysisHistory from '@/components/analyze/AnalysisHistory';
-import { saveFullResult } from '@/lib/history';
+import AuthGuard from '@/components/ui/AuthGuard';
+import { saveFullResult, saveToHistory } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
+import { incrementAnalyses } from '@/lib/analyses';
+import { formatDurationLimit } from '@/lib/plans';
+import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
-// Client-only components (use browser APIs)
 const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader'), { ssr: false });
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
+const AnalysisHistory = dynamic(() => import('@/components/analyze/AnalysisHistory'), { ssr: false });
 
-type Phase = 'form' | 'analyzing' | 'error';
+type Phase = 'preanalysis' | 'form' | 'analyzing' | 'error';
 
-export default function AnalyzePage() {
+function AnalyzeContent() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('form');
+  const [phase, setPhase] = useState<Phase>('preanalysis');
   const [file, setFile] = useState<File | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [frameProgress, setFrameProgress] = useState<{ current: number; total: number } | null>(null);
   const [framesReady, setFramesReady] = useState(false);
   const [frameDataRef, setFrameDataRef] = useState<VideoFrameData | null>(null);
   const [error, setError] = useState('');
+  const [durationError, setDurationError] = useState('');
   const [context, setContext] = useState<Partial<SimpleVideoContext>>({
     language: 'hebrew',
     platforms: ['instagram'],
   });
-  // Safety timer: ensures framesReady=true after at most 1s regardless of what else is happening
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { user } = useAuth();
+  const { user, plan, remainingAnalyses } = useAuth();
+  const isPaid = plan.id !== 'free';
 
   const clearSafetyTimer = useCallback(() => {
     if (safetyTimerRef.current) {
@@ -45,43 +49,37 @@ export default function AnalyzePage() {
     }
   }, []);
 
-  // Fire-and-forget thumbnail from first video frame (cosmetic only)
-  const generateThumbnail = useCallback((f: File) => {
-    void (async () => {
-      try {
-        const url = URL.createObjectURL(f);
+  const checkDuration = useCallback(async (f: File): Promise<boolean> => {
+    try {
+      const url = URL.createObjectURL(f);
+      return await new Promise<boolean>((resolve) => {
         const video = document.createElement('video');
-        video.muted = true;
-        video.playsInline = true;
         video.preload = 'metadata';
+        video.muted = true;
         video.src = url;
-        await new Promise<void>((res) => {
-          video.onloadeddata = () => { video.currentTime = 0.5; };
-          video.onseeked = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 120;
-            canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth)) || 68;
-            ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-            setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
-            URL.revokeObjectURL(url);
-            res();
-          };
-          video.onerror = () => { URL.revokeObjectURL(url); res(); };
-          // Don't hang forever waiting for metadata on slow mobile
-          setTimeout(res, 3000);
-        });
-      } catch {
-        // Thumbnail is purely cosmetic — never block on errors
-      }
-    })();
-  }, []);
+        video.onloadedmetadata = () => {
+          URL.revokeObjectURL(url);
+          const dur = video.duration;
+          if (dur > plan.maxDurationSec) {
+            setDurationError(
+              `הסרטון ארוך מדי — ${Math.round(dur)} שניות. התוכנית ${plan.nameHe} מאפשרת עד ${formatDurationLimit(plan.maxDurationSec)} בלבד.`
+            );
+            resolve(false);
+          } else {
+            setDurationError('');
+            resolve(true);
+          }
+        };
+        video.onerror = () => { URL.revokeObjectURL(url); resolve(true); };
+      });
+    } catch {
+      return true;
+    }
+  }, [plan]);
 
-  // Real-mode only: full frame extraction
   const extractFramesAsync = useCallback(async (selectedFile: File) => {
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
-
       const meta = await getVideoMeta(selectedFile);
 
       const canvas = document.createElement('canvas');
@@ -109,12 +107,7 @@ export default function AnalyzePage() {
       });
 
       clearSafetyTimer();
-      setFrameDataRef({
-        frames,
-        duration: meta.duration,
-        width: meta.width,
-        height: meta.height,
-      });
+      setFrameDataRef({ frames, duration: meta.duration, width: meta.width, height: meta.height });
       setFramesReady(true);
     } catch (err) {
       console.error('Frame extraction failed:', err);
@@ -123,31 +116,64 @@ export default function AnalyzePage() {
     }
   }, [clearSafetyTimer]);
 
-  const handleFileSelected = useCallback(
-    (selectedFile: File) => {
-      clearSafetyTimer();
+  const generateThumbnail = useCallback((f: File) => {
+    void (async () => {
+      try {
+        const url = URL.createObjectURL(f);
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        video.src = url;
+        await new Promise<void>((res) => {
+          video.onloadeddata = () => { video.currentTime = 0.5; };
+          video.onseeked = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 120;
+            canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth)) || 68;
+            ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+            setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
+            URL.revokeObjectURL(url);
+            res();
+          };
+          video.onerror = () => { URL.revokeObjectURL(url); res(); };
+          setTimeout(res, 3000);
+        });
+      } catch { /* cosmetic only */ }
+    })();
+  }, []);
 
+  const handleFileSelected = useCallback(
+    async (selectedFile: File) => {
+      clearSafetyTimer();
       setFile(selectedFile);
       setFrameDataRef(null);
       setThumbnailUrl(null);
       setFrameProgress(null);
       setFramesReady(false);
+      setDurationError('');
 
-      if (IS_DEMO) {
-        // Instant: set ready synchronously — zero video processing
+      const ok = await checkDuration(selectedFile);
+      if (!ok) {
         setFramesReady(true);
-        generateThumbnail(selectedFile); // cosmetic, fire-and-forget
+        generateThumbnail(selectedFile);
         return;
       }
 
-      // Real mode: safety fallback (1 second) so the button never stays locked
+      if (IS_DEMO) {
+        setFramesReady(true);
+        generateThumbnail(selectedFile);
+        return;
+      }
+
       safetyTimerRef.current = setTimeout(() => {
         safetyTimerRef.current = null;
         setFramesReady(true);
       }, 1000);
       void extractFramesAsync(selectedFile);
     },
-    [extractFramesAsync, generateThumbnail, clearSafetyTimer]
+    [extractFramesAsync, generateThumbnail, clearSafetyTimer, checkDuration]
   );
 
   const handleRemove = useCallback(() => {
@@ -157,13 +183,13 @@ export default function AnalyzePage() {
     setFramesReady(false);
     setFrameProgress(null);
     setThumbnailUrl(null);
+    setDurationError('');
   }, [clearSafetyTimer]);
 
-  const canAnalyze = file && (context.platforms?.length ?? 0) > 0 && framesReady;
+  const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && remainingAnalyses > 0;
 
   const handleAnalyze = async () => {
     if (!canAnalyze) return;
-
     setPhase('analyzing');
     setError('');
 
@@ -174,19 +200,18 @@ export default function AnalyzePage() {
           platforms: context.platforms ?? ['instagram'],
           language: context.language || 'hebrew',
           niche: context.niche,
-          goal: context.goal,
+          goals: context.goals,
         });
         sessionStorage.setItem('viralyze_result', JSON.stringify(result));
         sessionStorage.setItem('viralyze_context', JSON.stringify(context));
-        const savedContext = { language: context.language };
-        saveFullResult(result.id, result, savedContext);
-        const { saveToHistory } = await import('@/lib/history');
+        saveFullResult(result.id, result, { language: context.language });
+        if (user) incrementAnalyses(user.email, plan.isLifetimeLimit);
         saveToHistory(
           {
             id: result.id,
             date: Date.now(),
             fileName: file.name,
-            thumbnailUrl: thumbnailUrl,
+            thumbnailUrl,
             viralScore: result.scores.viralPotential,
             hookScore: result.scores.hookStrength,
             platform: (context.platforms ?? ['instagram'])[0],
@@ -197,13 +222,7 @@ export default function AnalyzePage() {
         return;
       }
 
-      // Real mode: send frames to API
-      const finalFrameData: VideoFrameData = frameDataRef || {
-        frames: [],
-        duration: 0,
-        width: 0,
-        height: 0,
-      };
+      const finalFrameData: VideoFrameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -214,29 +233,29 @@ export default function AnalyzePage() {
             platforms: context.platforms ?? ['instagram'],
             language: context.language || 'hebrew',
             niche: context.niche,
-            goal: context.goal,
+            goals: context.goals,
+            contentType: context.contentType,
+            editability: context.editability,
+            audienceAge: context.audienceAge,
+            audienceGender: context.audienceGender,
           } satisfies SimpleVideoContext,
         }),
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       const result = data as AnalysisResult;
       sessionStorage.setItem('viralyze_result', JSON.stringify(result));
       sessionStorage.setItem('viralyze_context', JSON.stringify(context));
-      const savedContext = { language: context.language };
-      saveFullResult(result.id, result, savedContext);
-      const { saveToHistory } = await import('@/lib/history');
+      saveFullResult(result.id, result, { language: context.language });
+      if (user) incrementAnalyses(user.email, plan.isLifetimeLimit);
       saveToHistory(
         {
           id: result.id,
           date: Date.now(),
           fileName: file.name,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
           viralScore: result.scores.viralPotential,
           hookScore: result.scores.hookStrength,
           platform: (context.platforms ?? ['instagram'])[0],
@@ -252,15 +271,22 @@ export default function AnalyzePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080808] grid-pattern">
+    <div className="min-h-screen bg-[#080808]">
       {/* Ambient */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-[radial-gradient(circle,rgba(212,168,67,0.06)_0%,transparent_70%)] rounded-full" />
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-[0.04]"
+          style={{ background: 'radial-gradient(circle, #D4A843 0%, transparent 70%)' }} />
       </div>
 
       {/* Nav */}
-      <nav className="relative z-10 px-6 py-5 border-b border-[rgba(212,168,67,0.06)] flex items-center justify-between">
-        <div className="text-xs text-white/30">ניתוח ראשון בחינם · ללא כרטיס אשראי</div>
+      <nav className="relative z-10 px-5 py-4 border-b border-[rgba(212,168,67,0.07)] flex items-center justify-between"
+        style={{ background: 'rgba(8,8,8,0.85)', backdropFilter: 'blur(20px)' }}>
+        <Link href="/dashboard">
+          <button className="flex items-center gap-1.5 text-xs text-white/25 hover:text-white/55 transition-colors">
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            לוח בקרה
+          </button>
+        </Link>
         <Link href="/" className="flex items-center gap-2">
           <span className="text-xl font-black">
             <span className="text-white">Viral</span>
@@ -273,73 +299,150 @@ export default function AnalyzePage() {
       </nav>
 
       <AnimatePresence mode="wait">
-        {/* Main form */}
+
+        {/* Pre-analysis flow */}
+        {phase === 'preanalysis' && (
+          <motion.div
+            key="preanalysis"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10 max-w-xl mx-auto px-5 py-10"
+          >
+            <div className="text-center mb-8">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.1 }}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-5"
+                style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)' }}
+              >
+                <span className="text-[#D4A843] text-xs font-bold tracking-widest uppercase">AI מותאם אישית</span>
+              </motion.div>
+              <motion.h1
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="text-3xl md:text-4xl font-black mb-3"
+              >
+                ספר לנו על <span className="gold-text">הסרטון שלך</span>
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.25 }}
+                className="text-white/45 text-sm leading-relaxed max-w-sm mx-auto"
+              >
+                ה-AI שלנו מתאים את כל הניתוח בהתאם לסוג התוכן, המטרה ומגבלות העריכה שלך
+              </motion.p>
+            </div>
+
+            <PreAnalysisFlow
+              onComplete={(ctx) => {
+                setContext((prev) => ({ ...prev, ...ctx }));
+                setPhase('form');
+              }}
+            />
+          </motion.div>
+        )}
+
+        {/* Upload form */}
         {phase === 'form' && (
           <motion.div
             key="form"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="relative z-10 max-w-2xl mx-auto px-6 py-14"
+            className="relative z-10 max-w-xl mx-auto px-5 py-10"
           >
+            {/* Context summary pill */}
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-between mb-6 p-3 rounded-xl"
+              style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.15)' }}
+            >
+              <button
+                onClick={() => setPhase('preanalysis')}
+                className="text-xs text-[#D4A843]/55 hover:text-[#D4A843] transition-colors"
+              >
+                שנה
+              </button>
+              <div className="flex items-center gap-2 text-right">
+                <span className="text-xs text-white/55 font-medium">
+                  {context.contentType && (
+                    CONTENT_TYPE_LABELS[context.contentType as keyof typeof CONTENT_TYPE_LABELS] ?? context.contentType
+                  )}
+                  {context.goals && context.goals.length > 0 && ` · ${context.goals.map((g) => GOAL_LABELS[g as keyof typeof GOAL_LABELS] ?? g).join(', ')}`}
+                  {context.editability && ` · ${EDIT_LABELS[context.editability as keyof typeof EDIT_LABELS] ?? ''}`}
+                </span>
+                <div className="w-5 h-5 rounded-lg flex items-center justify-center"
+                  style={{ background: 'rgba(212,168,67,0.1)' }}>
+                  <Zap className="w-3 h-3 text-[#D4A843]" />
+                </div>
+              </div>
+            </motion.div>
+
             {/* Header */}
-            <div className="text-center mb-10">
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-4xl md:text-5xl font-black mb-3"
-              >
-                נתח את <span className="gold-text">הסרטון שלך</span>
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.15 }}
-                className="text-white/50"
-              >
-                ה-AI יצפה בסרטון שלך ויסביר בדיוק מה עלול לפגוע בחשיפה שלו.
-              </motion.p>
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-black mb-2">
+                <span className="gold-text">העלה</span> את הסרטון שלך
+              </h1>
+              <p className="text-white/45 text-sm">ה-AI יצפה וינתח כל פריים</p>
             </div>
 
-            {/* Login nudge — shown only when logged out */}
-            {!user && (
+            {/* Usage warnings */}
+            {remainingAnalyses === 0 && (
               <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="mb-5 flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
-                style={{
-                  background: 'rgba(212,168,67,0.05)',
-                  border: '1px solid rgba(212,168,67,0.15)',
-                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mb-5 flex items-start gap-3 p-4 rounded-xl"
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
               >
-                <Link href="/login?redirect=/analyze">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="flex items-center gap-1.5 text-xs font-bold text-black px-3 py-1.5 rounded-lg flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)' }}
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    כניסה
-                  </motion.button>
-                </Link>
-                <p className="text-xs text-white/40 text-right">
-                  היכנס כדי לשמור את הניתוחים שלך ולגשת אליהם בכל מכשיר
-                </p>
+                <Lock className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                <div className="text-right">
+                  <p className="text-sm font-bold text-red-400">
+                    {plan.id === 'free' ? 'השתמשת בניתוח הניסיון' : 'נגמרו הניתוחים החודש'}
+                  </p>
+                  <p className="text-xs text-red-400/60 mt-0.5">
+                    <Link href="/profile#billing" className="underline">שדרג את התוכנית שלך</Link> לניתוחים נוספים
+                  </p>
+                </div>
               </motion.div>
             )}
+
+            {remainingAnalyses > 0 && remainingAnalyses <= 2 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mb-4 flex items-center gap-2 p-3 rounded-xl text-right"
+                style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.15)' }}
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-[#D4A843]/60 flex-shrink-0" />
+                <span className="text-xs text-white/40 flex-1">
+                  {plan.id === 'free'
+                    ? 'נותר לך ניתוח ניסיון אחד בחינם'
+                    : `נותרו ${remainingAnalyses} ניתוחים החודש`}
+                </span>
+              </motion.div>
+            )}
+
+            {/* Plan duration badge */}
+            <div className="flex items-center justify-end gap-2 mb-3">
+              <span className="text-xs text-white/25">מגבלת אורך:</span>
+              <span
+                className="text-xs font-bold px-2 py-0.5 rounded-full"
+                style={{ background: `${plan.color}15`, color: plan.color, border: `1px solid ${plan.color}25` }}
+              >
+                עד {formatDurationLimit(plan.maxDurationSec)}
+              </span>
+            </div>
 
             {/* History */}
             <AnalysisHistory />
 
             {/* Upload */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="mb-6"
-            >
+            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-5">
               <VideoUploader
                 file={file}
                 onFileSelected={handleFileSelected}
@@ -347,19 +450,44 @@ export default function AnalyzePage() {
                 frameProgress={frameProgress}
                 framesReady={framesReady}
                 thumbnailUrl={thumbnailUrl}
+                planMaxDuration={plan.maxDurationSec}
               />
             </motion.div>
 
-            {/* Platform / options — show once file is selected */}
+            {/* Duration error */}
             <AnimatePresence>
-              {file && (
+              {durationError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mb-5 flex items-start gap-3 p-4 rounded-xl"
+                  style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}
+                >
+                  <AlertCircle className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-right">
+                    <p className="text-sm text-orange-300">{durationError}</p>
+                    <Link href="/profile#billing" className="text-xs text-[#D4A843] mt-1 inline-block hover:text-[#F0C060] transition-colors">
+                      ← צפה בתוכניות
+                    </Link>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Platform picker — shown only when file selected, no duration error, and context has no platforms set */}
+            <AnimatePresence>
+              {file && !durationError && !isPaid && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="mb-8"
+                  className="mb-6"
                 >
-                  <div className="glass rounded-2xl p-5">
+                  <div
+                    className="rounded-2xl p-5"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  >
                     <PlatformPicker
                       context={context}
                       onChange={(u) => setContext((prev) => ({ ...prev, ...u }))}
@@ -374,44 +502,41 @@ export default function AnalyzePage() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="mb-5 flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm"
+                className="mb-5 flex items-start gap-3 p-4 rounded-xl"
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
               >
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>{error}</span>
+                <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                <span className="text-sm text-red-300">{error}</span>
               </motion.div>
             )}
 
             {/* Analyze button */}
             <AnimatePresence>
               {file && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                >
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                   <motion.button
-                    whileHover={{ scale: canAnalyze ? 1.02 : 1 }}
+                    whileHover={{ scale: canAnalyze ? 1.015 : 1, boxShadow: canAnalyze ? '0 0 48px rgba(212,168,67,0.4)' : 'none' }}
                     whileTap={{ scale: canAnalyze ? 0.98 : 1 }}
                     onClick={handleAnalyze}
                     disabled={!canAnalyze}
                     className="w-full py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
-                      background: canAnalyze
-                        ? 'linear-gradient(135deg, #D4A843, #F0C060)'
-                        : 'rgba(212,168,67,0.2)',
-                      color: canAnalyze ? '#000' : 'rgba(212,168,67,0.5)',
-                      boxShadow: canAnalyze ? '0 0 40px rgba(212,168,67,0.35)' : 'none',
+                      background: canAnalyze ? 'linear-gradient(135deg, #D4A843, #F0C060)' : 'rgba(212,168,67,0.15)',
+                      color: canAnalyze ? '#000' : 'rgba(212,168,67,0.4)',
+                      boxShadow: canAnalyze ? '0 0 36px rgba(212,168,67,0.25)' : 'none',
                     }}
                   >
                     <Zap className="w-5 h-5 fill-current" />
-                    {!framesReady
-                      ? 'מכין סרטון לניתוח...'
-                      : (context.platforms?.length ?? 0) === 0
-                      ? 'בחר פלטפורמה כדי להמשיך'
+                    {remainingAnalyses === 0
+                      ? 'אין ניתוחים — שדרג'
+                      : durationError
+                      ? 'הסרטון ארוך מדי'
+                      : !framesReady
+                      ? 'מכין לניתוח...'
                       : 'נתח את הסרטון שלי עכשיו'}
                   </motion.button>
 
-                  <p className="text-center text-xs text-white/25 mt-4">
+                  <p className="text-center text-xs text-white/20 mt-3">
                     הסרטון מעובד בצורה מאובטחת ואינו נשמר לצמיתות
                   </p>
                 </motion.div>
@@ -429,7 +554,7 @@ export default function AnalyzePage() {
             exit={{ opacity: 0 }}
             className="relative z-10"
           >
-            <AIScanner />
+            <AIScanner frames={frameDataRef?.frames ?? []} />
           </motion.div>
         )}
 
@@ -439,29 +564,75 @@ export default function AnalyzePage() {
             key="error"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="relative z-10 max-w-lg mx-auto px-6 py-32 text-center"
+            className="relative z-10 max-w-lg mx-auto px-5 py-32 text-center"
           >
-            <div className="w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-              <AlertCircle className="w-8 h-8 text-red-400" />
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
+              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <AlertCircle className="w-7 h-7 text-red-400" />
             </div>
             <h2 className="text-2xl font-bold mb-3 text-white">הניתוח נכשל</h2>
-            <p className="text-white/50 mb-8 text-sm leading-relaxed font-mono bg-[rgba(255,255,255,0.03)] rounded-xl p-4">
+            <p className="text-white/45 mb-8 text-sm font-mono leading-relaxed bg-[rgba(255,255,255,0.03)] rounded-xl p-4">
               {error}
             </p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => { setPhase('form'); setError(''); }}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black font-bold text-sm"
+                className="px-6 py-3 rounded-xl font-bold text-sm text-black"
+                style={{ background: 'linear-gradient(135deg, #D4A843, #F0C060)' }}
               >
                 נסה שוב
               </button>
-              <Link href="/" className="px-6 py-3 rounded-xl glass text-white/60 text-sm font-semibold hover:text-white transition-colors">
+              <Link href="/" className="px-6 py-3 rounded-xl text-white/50 text-sm font-semibold hover:text-white transition-colors"
+                style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
                 חזור לדף הבית
               </Link>
             </div>
           </motion.div>
         )}
+
       </AnimatePresence>
     </div>
+  );
+}
+
+const CONTENT_TYPE_LABELS = {
+  'ad': 'פרסומת',
+  'organic-tiktok': 'TikTok אורגני',
+  'instagram-reel': 'Instagram Reel',
+  'ugc': 'UGC',
+  'storytelling': 'סיפור',
+  'podcast': 'פודקאסט',
+  'meme': 'מים',
+  'tutorial': 'הדרכה',
+  'personal-brand': 'מיתוג אישי',
+  'other': 'אחר',
+};
+
+const GOAL_LABELS = {
+  'views': 'צפיות',
+  'comments': 'תגובות',
+  'shares': 'שיתופים',
+  'followers': 'עוקבים',
+  'watch-time': 'זמן צפייה',
+  'product-ad': 'פרסומת',
+  'sales': 'מכירות',
+  'engagement': 'מעורבות',
+  'ugc': 'UGC',
+  'funny': 'מצחיק',
+  'personal': 'אישי',
+  'emotional': 'רגשי',
+};
+
+const EDIT_LABELS = {
+  'fully-editable': 'עריכה מלאה',
+  'editing-only': 'רק עריכה',
+  'final': 'גרסה סופית',
+};
+
+export default function AnalyzePage() {
+  return (
+    <AuthGuard>
+      <AnalyzeContent />
+    </AuthGuard>
   );
 }

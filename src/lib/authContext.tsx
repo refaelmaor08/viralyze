@@ -10,11 +10,16 @@ import {
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase, supabaseReady } from './supabase';
 import { clearUser, getUser, setUser, type AuthUser } from './auth';
+import { type PlanId, getPlan } from './plans';
+import { getUsedAnalyses } from './analyses';
 
 interface AuthContextValue {
   user: AuthUser | null;
   supabaseUser: SupabaseUser | null;
   loading: boolean;
+  plan: ReturnType<typeof getPlan>;
+  usedAnalyses: number;
+  remainingAnalyses: number;
   signOut: () => Promise<void>;
   refresh: () => void;
 }
@@ -23,6 +28,9 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   supabaseUser: null,
   loading: true,
+  plan: getPlan('free'),
+  usedAnalyses: 0,
+  remainingAnalyses: 3,
   signOut: async () => {},
   refresh: () => {},
 });
@@ -34,10 +42,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applySupabaseUser = useCallback((sbUser: SupabaseUser | null) => {
     if (!sbUser) return;
+    const existing = getUser();
     const authUser: AuthUser = {
       email: sbUser.email ?? '',
-      provider:
-        (sbUser.app_metadata?.provider as AuthUser['provider']) ?? 'email',
+      provider: (sbUser.app_metadata?.provider as AuthUser['provider']) ?? 'email',
+      plan: existing?.plan ?? 'free',
     };
     setUser(authUser);
     setUserState(authUser);
@@ -69,7 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return () => subscription.unsubscribe();
     } else {
-      // Supabase not configured — use localStorage auth only
       setUserState(getUser());
       setLoading(false);
     }
@@ -86,8 +94,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserState(getUser());
   }, []);
 
+  const planId: PlanId = user?.plan ?? 'free';
+  const plan = getPlan(planId);
+  const usedAnalyses = user ? getUsedAnalyses(user.email, plan.isLifetimeLimit) : 0;
+  const remainingAnalyses = Math.max(0, plan.monthlyAnalyses - usedAnalyses);
+
   return (
-    <AuthContext.Provider value={{ user, supabaseUser, loading, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, supabaseUser, loading, plan, usedAnalyses, remainingAnalyses, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Zap, X, Menu, ChevronLeft, LogOut, Clock } from 'lucide-react';
+import { Zap, X, Menu, ChevronLeft, LogOut, Clock, LayoutDashboard, User, CreditCard, Sparkles } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { useAuth } from '@/lib/authContext';
 
@@ -71,7 +71,7 @@ function UserMenu({ user }: { user: AuthUser }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.18 }}
-            className="absolute top-12 left-0 rounded-2xl overflow-hidden min-w-[200px]"
+            className="absolute top-12 right-0 rounded-2xl overflow-hidden min-w-[200px]"
             style={{
               background: 'rgba(10,10,10,0.97)',
               border: '1px solid rgba(212,168,67,0.2)',
@@ -86,13 +86,46 @@ function UserMenu({ user }: { user: AuthUser }) {
             </div>
             <div className="p-2">
               <Link
+                href="/dashboard"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
+              >
+                <LayoutDashboard className="w-4 h-4 text-[#D4A843]/60 flex-shrink-0" />
+                <span className="text-sm text-white/65">לוח בקרה</span>
+              </Link>
+              <Link
                 href="/analyze"
                 onClick={() => setOpen(false)}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
               >
                 <Clock className="w-4 h-4 text-[#D4A843]/60 flex-shrink-0" />
-                <span className="text-sm text-white/65">היסטוריית ניתוחים</span>
+                <span className="text-sm text-white/65">ניתוח חדש / היסטוריה</span>
               </Link>
+              <Link
+                href="/creator"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
+              >
+                <Sparkles className="w-4 h-4 text-purple-400/60 flex-shrink-0" />
+                <span className="text-sm text-white/65">AI Coach ויראלי</span>
+              </Link>
+              <Link
+                href="/profile"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
+              >
+                <User className="w-4 h-4 text-[#D4A843]/60 flex-shrink-0" />
+                <span className="text-sm text-white/65">פרופיל והגדרות</span>
+              </Link>
+              <Link
+                href="/profile#billing"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
+              >
+                <CreditCard className="w-4 h-4 text-[#D4A843]/60 flex-shrink-0" />
+                <span className="text-sm text-white/65">תשלומים ותוכנית</span>
+              </Link>
+              <div className="h-px mx-1 my-1" style={{ background: 'rgba(255,255,255,0.05)' }} />
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right hover:bg-white/5 transition-colors"
@@ -345,13 +378,34 @@ export default function Navbar() {
                   </motion.button>
                 </Link>
                 {user ? (
-                  <button
-                    onClick={() => { signOut(); setIsOpen(false); }}
-                    className="w-full py-3 rounded-xl text-sm text-white/35 hover:text-white/55 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    צא מהחשבון ({user.email.split('@')[0]})
-                  </button>
+                  <div className="space-y-1.5">
+                    <Link href="/dashboard" onClick={() => setIsOpen(false)}>
+                      <button className="w-full py-2.5 rounded-xl text-sm text-white/55 hover:text-white/80 transition-colors flex items-center justify-center gap-2"
+                        style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <LayoutDashboard className="w-3.5 h-3.5" />
+                        לוח בקרה
+                      </button>
+                    </Link>
+                    <Link href="/creator" onClick={() => setIsOpen(false)}>
+                      <button className="w-full py-2.5 rounded-xl text-sm text-white/40 hover:text-white/60 transition-colors flex items-center justify-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        AI Coach ויראלי
+                      </button>
+                    </Link>
+                    <Link href="/profile" onClick={() => setIsOpen(false)}>
+                      <button className="w-full py-2.5 rounded-xl text-sm text-white/40 hover:text-white/60 transition-colors flex items-center justify-center gap-2">
+                        <User className="w-3.5 h-3.5" />
+                        פרופיל
+                      </button>
+                    </Link>
+                    <button
+                      onClick={() => { signOut(); setIsOpen(false); }}
+                      className="w-full py-2.5 rounded-xl text-sm text-white/30 hover:text-white/50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      יציאה
+                    </button>
+                  </div>
                 ) : (
                   <Link href="/login" onClick={() => setIsOpen(false)}>
                     <button className="w-full py-3 rounded-xl text-sm text-white/45 hover:text-white/65 transition-colors">

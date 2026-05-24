@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Video, X, CheckCircle, Loader2 } from 'lucide-react';
 import { formatFileSize } from '@/lib/utils';
+import { formatDurationLimit } from '@/lib/plans';
 
 interface VideoUploaderProps {
   file: File | null;
@@ -13,6 +14,7 @@ interface VideoUploaderProps {
   frameProgress?: { current: number; total: number } | null;
   framesReady?: boolean;
   thumbnailUrl?: string | null;
+  planMaxDuration?: number;
 }
 
 export default function VideoUploader({
@@ -22,6 +24,7 @@ export default function VideoUploader({
   frameProgress,
   framesReady,
   thumbnailUrl,
+  planMaxDuration,
 }: VideoUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
 
@@ -51,7 +54,7 @@ export default function VideoUploader({
         style={{ border: '1px solid rgba(212,168,67,0.2)', background: 'rgba(212,168,67,0.04)' }}
       >
         <div className="flex items-center gap-4 p-4">
-          {/* Thumbnail or icon */}
+          {/* Thumbnail */}
           <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 relative bg-[rgba(212,168,67,0.1)]">
             {thumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -68,7 +71,6 @@ export default function VideoUploader({
             <p className="font-semibold text-white text-sm truncate">{file.name}</p>
             <p className="text-xs text-white/50 mt-0.5">{formatFileSize(file.size)}</p>
 
-            {/* Frame extraction status */}
             {!framesReady && frameProgress ? (
               <div className="flex items-center justify-end gap-1.5 mt-1.5">
                 <span className="text-xs text-[#D4A843]">
@@ -154,7 +156,12 @@ export default function VideoUploader({
         <p className="text-white/50 text-sm mb-1">
           גרור ושחרר, או לחץ לבחירה
         </p>
-        <p className="text-xs text-white/30">MP4, MOV, WebM · עד 500MB</p>
+        <p className="text-xs text-white/30 mb-1">MP4, MOV, WebM · עד 500MB</p>
+        {planMaxDuration && (
+          <p className="text-xs font-medium mt-2" style={{ color: 'rgba(212,168,67,0.6)' }}>
+            מגבלת התוכנית שלך: עד {formatDurationLimit(planMaxDuration)}
+          </p>
+        )}
       </motion.div>
     </div>
   );

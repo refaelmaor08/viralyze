@@ -54,7 +54,7 @@ function SuggestionCard({ icon: Icon, title, items, delay = 0 }: {
           >
             <CopyButton text={item} />
             <p className="text-sm text-white/80 leading-relaxed flex-1 text-right">{item}</p>
-            <span className="text-xs font-bold text-[#D4A843]/60 mt-0.5 flex-shrink-0 w-5 text-left">
+            <span className="text-xs font-bold text-[#D4A843]/60 mt-0.5 flex-shrink-0 w-5 text-right">
               {i + 1}.
             </span>
           </motion.div>

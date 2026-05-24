@@ -6,11 +6,36 @@ export type Platform =
   | 'linkedin'
   | 'twitter';
 
+export type ContentType =
+  | 'ad'
+  | 'organic-tiktok'
+  | 'instagram-reel'
+  | 'ugc'
+  | 'storytelling'
+  | 'podcast'
+  | 'meme'
+  | 'tutorial'
+  | 'personal-brand'
+  | 'other';
+
+export type Editability = 'fully-editable' | 'editing-only' | 'final';
+
 export interface SimpleVideoContext {
   platforms: Platform[];
   language: 'hebrew' | 'english';
   niche?: string;
-  goal?: string;
+  goals?: string[];
+  contentType?: ContentType;
+  editability?: Editability;
+  audienceAge?: string;
+  audienceGender?: 'male' | 'female' | 'both';
+}
+
+export interface TimelineEntry {
+  time: string;
+  seconds: number;
+  type: 'strong' | 'warning' | 'critical';
+  text: string;
 }
 
 export interface AnalysisScores {
@@ -63,6 +88,7 @@ export interface AnalysisResult {
   executiveSummary: string;
   overallVerdict: string;
   createdAt: string;
+  timeline?: TimelineEntry[];
 }
 
 export interface CompetitorAnalysis {
@@ -78,4 +104,19 @@ export interface VideoFrameData {
   duration: number;
   width: number;
   height: number;
+}
+
+export interface CreatorIdea {
+  title: string;
+  hook: string;
+  caption: string;
+  structure: string;
+  cta: string;
+  angle: string;
+}
+
+export interface CreatorAssistantResponse {
+  ideas: CreatorIdea[];
+  viralAngles: string[];
+  thumbnailConcepts: string[];
 }

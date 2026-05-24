@@ -178,10 +178,10 @@ function VideoMockup({ inView }: { inView: boolean }) {
     >
       <div className="absolute inset-0 bg-gradient-to-b from-[#1a1a1a] via-[#111] to-[#0a0a0a]" />
       <div className="absolute inset-0 flex flex-col gap-2 p-4 opacity-20">
-        <div className="h-8 w-3/4 rounded bg-white/10 ml-auto" />
+        <div className="h-8 w-3/4 rounded bg-white/10 mr-auto" />
         <div className="flex-1 rounded bg-white/5" />
         <div className="h-4 w-1/2 rounded bg-white/10" />
-        <div className="h-4 w-2/3 rounded bg-white/8 ml-auto" />
+        <div className="h-4 w-2/3 rounded bg-white/8 mr-auto" />
       </div>
       {inView && (
         <motion.div
@@ -318,7 +318,7 @@ export default function LiveDemoSection() {
                         </div>
                         {/* Score */}
                         <motion.span
-                          className="text-sm font-black w-8 text-left flex-shrink-0"
+                          className="text-sm font-black w-8 text-right flex-shrink-0"
                           style={{ color: s.color }}
                           initial={{ opacity: 0 }}
                           animate={inView ? { opacity: 1 } : {}}

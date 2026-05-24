@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -15,6 +15,7 @@ You have deep expertise in:
 - Hook psychology and scroll-stopping techniques
 - Israeli content culture and Hebrew creator behavior
 - Emotional triggers, dopamine loops, attention patterns
+- Advertising psychology, conversion optimization, CTA effectiveness
 
 WHAT YOU SEE: You receive actual extracted video frames. Use them to make SPECIFIC visual observations:
 - Is the lighting bright, dark, harsh, or flat?
@@ -39,7 +40,12 @@ CRITICAL RULES:
 4. If there's barely any movement between frames — call out slow pacing
 5. Be as specific as a real video editor reviewing footage
 
-${isHe ? 'RESPOND ENTIRELY IN HEBREW. Use modern Israeli language. Speak naturally.' : 'RESPOND IN ENGLISH.'}`;
+${isHe ? `חובה להגיב בעברית ישראלית מודרנית וישירה בלבד.
+כתוב כמו חבר שמדבר עם יוצר תוכן — לא כמו AI רובוטי.
+אסור: "ההוק הראשוני אינו מייצר אינטראקציה מספקת" — מותר: "הפתיחה לא תופסת את העין, תוך שתי שניות כבר עוברים הלאה"
+אסור: "קיימת בעיה בפוטנציאל הוויראליות" — מותר: "הסרטון הזה לא יקבל פוש — אין סיבה לשתף אותו"
+אסור: "מומלץ לשפר את רמת האנרגיה" — מותר: "נראה עייף בפריים — תדבר כאילו זה הדבר הכי מרגש שקרה לך היום"
+מותר ב-JSON keys ובמונחי מקצוע כמו Hook, CTA, B-Roll — אסור אנגלית בגוף הניתוח.` : 'RESPOND ENTIRELY IN ENGLISH.'}`;
 }
 
 const platformLabels: Record<string, string> = {
@@ -51,14 +57,134 @@ const platformLabels: Record<string, string> = {
   twitter: 'X / Twitter',
 };
 
+const contentTypeLabels: Record<string, string> = {
+  'ad': 'Advertisement / Paid Ad',
+  'organic-tiktok': 'Organic TikTok',
+  'instagram-reel': 'Instagram Reel',
+  'ugc': 'UGC (User Generated Content)',
+  'storytelling': 'Storytelling',
+  'podcast': 'Podcast Clip',
+  'meme': 'Meme / Humor Content',
+  'tutorial': 'Tutorial / Educational',
+  'personal-brand': 'Personal Brand',
+  'other': 'General Content',
+};
+
+const goalLabels: Record<string, string> = {
+  'views': 'Maximum Views / Reach',
+  'comments': 'More Comments',
+  'shares': 'More Shares',
+  'followers': 'More Followers',
+  'watch-time': 'Better Watch Time / Retention',
+  'product-ad': 'Product Advertisement',
+  'sales': 'More Sales / Conversions',
+  'engagement': 'More Engagement',
+  'ugc': 'UGC / Authentic Content',
+  'funny': 'Funny / Meme Content',
+  'personal': 'Personal Content',
+  'emotional': 'Emotional / Inspiring Content',
+};
+
+function buildContextualInstructions(context: SimpleVideoContext): string {
+  const parts: string[] = [];
+
+  // Content type adaptation
+  if (context.contentType === 'ad') {
+    parts.push(`
+CONTENT TYPE: Advertisement / Paid Ad
+Analyze through the lens of AD PERFORMANCE:
+- Conversion potential and purchase psychology
+- CTA strength, timing, and urgency
+- Ad retention benchmarks (hook must work in <1s in paid feed)
+- Scroll-stopping power and pattern interrupt
+- Trust signals and credibility markers
+- Hook-to-purchase funnel strength
+DO NOT overly focus on: pure entertainment virality, comment bait, share triggers (unless they serve the ad)`);
+  } else if (context.contentType === 'organic-tiktok') {
+    parts.push(`
+CONTENT TYPE: Organic TikTok
+Analyze through the lens of TIKTOK ALGORITHM PERFORMANCE:
+- Native TikTok energy, authenticity, and relatability
+- Algorithm retention patterns (re-watch loops, watch time %)
+- Comment magnetism and reply triggers
+- Trend alignment and sound selection relevance
+- Pattern interrupts and curiosity gaps`);
+  } else if (context.contentType === 'ugc') {
+    parts.push(`
+CONTENT TYPE: UGC (User Generated Content)
+Analyze for authenticity, trust, and conversion:
+- Does it feel genuine or scripted?
+- Natural vs forced delivery
+- Social proof elements
+- Purchase intent triggers`);
+  } else if (context.contentType === 'tutorial') {
+    parts.push(`
+CONTENT TYPE: Tutorial / Educational
+Analyze for: clarity, value delivery speed, retention of learners, CTA for saves/follows`);
+  } else if (context.contentType === 'personal-brand') {
+    parts.push(`
+CONTENT TYPE: Personal Brand
+Analyze for: brand consistency, likability, expertise signals, audience connection, follow triggers`);
+  }
+
+  // Editability constraints — CRITICAL
+  if (context.editability === 'final') {
+    parts.push(`
+⚠️ CRITICAL CONSTRAINT — FINAL VERSION: This video has already been delivered/published.
+STRICTLY FORBIDDEN to suggest:
+- Re-shooting ANY scenes
+- Changing camera angles or locations
+- Filming new footage
+- Changing presenter, setup, or production
+- Any suggestion requiring new filming
+
+YOU MAY ONLY suggest post-delivery improvements:
+- Caption and subtitle optimization
+- Thumbnail / cover frame selection
+- Caption text for the post
+- Hook improvements through re-editing existing cuts
+- Pacing through removing or reordering existing clips
+- Music or sound selection changes
+- Text overlay additions
+- Platform optimization (aspect ratio, length trim)`);
+  } else if (context.editability === 'editing-only') {
+    parts.push(`
+CONSTRAINT — EDITING ONLY: No re-shoots possible. Focus on edit-level improvements:
+- Cuts and pacing
+- Caption additions
+- Music changes
+- Text overlays
+- Reordering existing clips`);
+  }
+
+  // Goal adaptation (multi-goal)
+  if (context.goals && context.goals.length > 0) {
+    const goalStr = context.goals.map((g) => goalLabels[g] || g).join(', ');
+    parts.push(`PRIMARY GOALS: ${goalStr}
+Weight your entire analysis toward achieving these specific goals. Suggestions, hooks, and CTAs should all serve these goals.`);
+  }
+
+  // Audience
+  if (context.audienceGender || context.audienceAge) {
+    const audience = [
+      context.audienceAge && `Age: ${context.audienceAge}`,
+      context.audienceGender && `Gender: ${context.audienceGender}`,
+    ].filter(Boolean).join(', ');
+    parts.push(`TARGET AUDIENCE: ${audience}
+Tailor hook and retention analysis for this specific audience's psychology.`);
+  }
+
+  return parts.join('\n\n');
+}
+
 function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext): string {
   const dur = Math.round(frameData.duration);
   const platformStr = (context.platforms ?? [])
     .map((p) => platformLabels[p] ?? p)
     .join(', ') || 'Instagram Reels';
   const frameCount = frameData.frames.length;
+  const contentTypeStr = context.contentType ? contentTypeLabels[context.contentType] : 'General Content';
 
-  // Describe what each frame represents
   const frameTimestamps = [0.3, 3, dur * 0.3, dur * 0.5, dur * 0.7, dur - 1]
     .map((t) => Math.max(0.1, Math.min(t, dur - 0.1)))
     .slice(0, frameCount);
@@ -72,14 +198,23 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext): st
     return `Frame ${i + 1}: ${label}`;
   });
 
+  const contextualInstructions = buildContextualInstructions(context);
+
+  const goalsStr = (context.goals && context.goals.length > 0)
+    ? context.goals.map((g) => goalLabels[g] || g).join(', ')
+    : '';
+
   return `Analyze this ${dur}-second video. You are viewing ${frameCount} extracted frames:
 
 ${frameDescriptions.join('\n')}
 
 Platform(s): ${platformStr}
+Content Type: ${contentTypeStr}
 Video duration: ${dur}s
 ${context.niche ? `Niche: ${context.niche}` : ''}
-${context.goal ? `Goal: ${context.goal}` : ''}
+${goalsStr ? `Goals: ${goalsStr}` : ''}
+
+${contextualInstructions ? `\n=== CONTEXTUAL ANALYSIS RULES ===\n${contextualInstructions}\n=== END RULES ===\n` : ''}
 
 VISUAL ANALYSIS TASK:
 For each frame you see, note:
@@ -133,9 +268,22 @@ Return VALID JSON in this exact structure:
       "type": "<cut|zoom|subtitle|speedup|music|emotion|transition>"
     }
   ],
+  "timeline": [
+    {
+      "time": "<e.g. 0:02>",
+      "seconds": <float seconds>,
+      "type": "<strong|warning|critical>",
+      "text": "<one short sentence in Hebrew describing what happens at this moment and why it matters>"
+    }
+  ],
   "executiveSummary": "<3-4 sentence honest summary>",
   "overallVerdict": "<one powerful, honest sentence about this specific video>"
 }
+
+For "timeline": provide 6-12 timestamp entries spread across the video duration. Use:
+- "strong" = moment that works well (hook, emotional beat, strong visual)
+- "warning" = potential drop-off or weak point
+- "critical" = likely viewer exit point or major problem
 
 Be BRUTALLY HONEST. Reference specific visual observations from the frames. No generic advice.`;
 }
@@ -161,18 +309,25 @@ export async function analyzeVideo(
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.65,
+    temperature: 0.1,
+    seed: 42,
     max_tokens: 4000,
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
 
+  const clamp = (v: unknown) => Math.max(1, Math.min(100, Math.round(Number(v) || 50)));
+  const scores = raw.scores
+    ? Object.fromEntries(Object.entries(raw.scores).map(([k, v]) => [k, clamp(v)]))
+    : raw.scores;
+
   return {
     id: crypto.randomUUID(),
-    scores: raw.scores,
+    scores,
     feedback: raw.feedback,
     suggestions: raw.suggestions,
     fixMyVideo: raw.fixMyVideo || [],
+    timeline: raw.timeline || [],
     executiveSummary: raw.executiveSummary,
     overallVerdict: raw.overallVerdict,
     createdAt: new Date().toISOString(),
@@ -206,6 +361,53 @@ Return JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.65,
+    max_tokens: 2000,
+  });
+
+  return JSON.parse(completion.choices[0].message.content || '{}');
+}
+
+export async function generateCreatorIdeas(
+  businessDescription: string,
+  language: string
+): Promise<CreatorAssistantResponse> {
+  const isHe = language === 'hebrew';
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a world-class viral content strategist. Your job is to generate specific, creative, scroll-stopping content ideas for creators and businesses.
+You think like the top 1% of TikTok and Instagram creators.
+${isHe ? 'חובה להגיב בעברית ישראלית מודרנית וטבעית.' : 'Respond in English.'}`,
+      },
+      {
+        role: 'user',
+        content: `Generate 3 viral content ideas for this business/creator:
+
+"${businessDescription}"
+
+Return JSON:
+{
+  "ideas": [
+    {
+      "title": "<catchy concept name in 3-5 words>",
+      "hook": "<the exact opening line/text — must be scroll-stopping>",
+      "caption": "<full social media caption with hashtags>",
+      "structure": "<shot-by-shot structure: 0-3s: ..., 3-8s: ..., 8-15s: ..., end: ...>",
+      "cta": "<specific call to action>",
+      "angle": "<psychological angle that makes this go viral>"
+    }
+  ],
+  "viralAngles": [<3 unique psychological angles that work for this niche>],
+  "thumbnailConcepts": [<2 thumbnail/cover concepts>]
+}
+
+Make ideas SPECIFIC to their business. No generic advice.`,
+      },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.85,
     max_tokens: 2000,
   });
 

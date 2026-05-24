@@ -200,7 +200,7 @@ export default function HeroSection() {
             <div className="mt-2.5 h-1 rounded-full bg-white/10 overflow-hidden">
               <motion.div initial={{ width: '0%' }} animate={{ width: '38%' }} transition={{ delay: 1.8, duration: 1.2, ease: 'easeOut' }} className="h-full bg-gradient-to-r from-red-500 to-orange-400 rounded-full" />
             </div>
-            <div className="text-[10px] text-red-400/60 mt-1 text-left">פתיחה: 38/100</div>
+            <div className="text-[10px] text-red-400/60 mt-1 text-right">פתיחה: 38/100</div>
           </div>
         </FloatingInsight>
 

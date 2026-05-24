@@ -22,7 +22,7 @@ export default function FixMyVideo({ suggestions }: FixMyVideoProps) {
   if (!suggestions?.length) {
     return (
       <div className="glass rounded-2xl p-8 text-center">
-        <p className="text-white/50">No specific edit suggestions generated for this video.</p>
+        <p className="text-white/50">לא נוצרו הצעות עריכה ספציפיות עבור הסרטון הזה.</p>
       </div>
     );
   }
@@ -35,10 +35,10 @@ export default function FixMyVideo({ suggestions }: FixMyVideoProps) {
         className="glass-strong rounded-2xl p-4 mb-6 flex items-center gap-3"
       >
         <Scissors className="w-5 h-5 text-[#D4A843]" />
-        <div>
-          <p className="text-sm font-semibold text-white">Frame-Level Edit Suggestions</p>
+        <div className="text-right">
+          <p className="text-sm font-semibold text-white">עריכות ספציפיות לסרטון</p>
           <p className="text-xs text-white/50">
-            Specific moments in your video that need attention. Apply these fixes before posting.
+            רגעים מסוימים בסרטון שלך שדורשים טיפול. יישם את התיקונים האלה לפני פרסום.
           </p>
         </div>
       </motion.div>

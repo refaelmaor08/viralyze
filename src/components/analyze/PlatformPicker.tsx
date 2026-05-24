@@ -20,13 +20,6 @@ const platforms: { value: Platform; label: string; emoji: string }[] = [
 
 const ALL_PLATFORMS: Platform[] = platforms.map((p) => p.value);
 
-const goals = [
-  { value: 'grow', label: 'לצמוח בעוקבים' },
-  { value: 'sales', label: 'למכור מוצר/שירות' },
-  { value: 'brand', label: 'לבנות מותג אישי' },
-  { value: 'content', label: 'תוכן בידורי/ויראלי' },
-];
-
 const niches = [
   'עסקים וכסף', 'אופנה ויופי', 'כושר ובריאות', 'אוכל ובישול',
   'קומדיה', 'חינוך', 'טיולים', 'נדל"ן', 'מיתוג אישי', 'אחר',
@@ -97,33 +90,6 @@ export default function PlatformPicker({ context, onChange }: PlatformPickerProp
         {selected.length === 0 && (
           <p className="text-xs text-red-400/70 mt-2 text-right">בחר לפחות פלטפורמה אחת</p>
         )}
-      </div>
-
-      {/* Goal — optional */}
-      <div>
-        <p className="text-sm font-semibold text-white/70 mb-3 text-right">
-          מה המטרה העיקרית?{' '}
-          <span className="text-white/30 font-normal text-xs">(אופציונלי)</span>
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          {goals.map((g) => (
-            <button
-              key={g.value}
-              type="button"
-              onClick={() =>
-                onChange({ goal: context.goal === g.value ? undefined : g.value })
-              }
-              className={cn(
-                'py-2.5 px-3 rounded-xl text-xs font-medium transition-all text-right',
-                context.goal === g.value
-                  ? 'bg-[rgba(212,168,67,0.18)] border border-[rgba(212,168,67,0.5)] text-[#D4A843]'
-                  : 'glass text-white/50 hover:text-white'
-              )}
-            >
-              {g.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Niche — optional */}

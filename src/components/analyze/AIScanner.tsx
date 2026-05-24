@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ── Stage definitions ────────────────────────────────────────────────────────
-
 const STAGES = [
   { id: 'hook',      label: 'מנתח Hook ופתיחה',         en: 'Hook Analysis',       ms: 1900 },
   { id: 'retention', label: 'בודק ריטנשן ונטישה',       en: 'Retention Scan',      ms: 2200 },
@@ -17,8 +15,6 @@ const STAGES = [
 ];
 
 const TOTAL_MS = STAGES.reduce((a, s) => a + s.ms, 0);
-
-// ── Retention curve data ─────────────────────────────────────────────────────
 
 const RET = [100, 81, 63, 59, 55, 58, 52, 49, 46, 48, 43, 41, 39, 42, 37, 34];
 const W = 160;
@@ -33,12 +29,15 @@ const RET_LINE = RET.map((v, i) => {
 }).join(' ');
 
 const RET_AREA = `${RET_LINE} L${W},${H} L0,${H} Z`;
-const DROP_X = (2 * (W / (RET.length - 1))).toFixed(1); // big drop at idx 2
+const DROP_X = (2 * (W / (RET.length - 1))).toFixed(1);
 
-// ── Main component ────────────────────────────────────────────────────────────
+interface AIScannerProps {
+  frames?: string[];
+}
 
-export default function AIScanner() {
+export default function AIScanner({ frames = [] }: AIScannerProps) {
   const [elapsed, setElapsed] = useState(0);
+  const [frameIdx, setFrameIdx] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -47,9 +46,17 @@ export default function AIScanner() {
     return () => clearInterval(id);
   }, []);
 
+  // Cycle through extracted frames every ~1.8s
+  useEffect(() => {
+    if (frames.length <= 1) return;
+    const id = setInterval(() => {
+      setFrameIdx((i) => (i + 1) % frames.length);
+    }, 1800);
+    return () => clearInterval(id);
+  }, [frames.length]);
+
   const progress = Math.min((elapsed / TOTAL_MS) * 100, 99);
 
-  // Current stage index
   const stageIdx = useMemo(() => {
     let acc = 0;
     for (let i = 0; i < STAGES.length; i++) {
@@ -59,7 +66,6 @@ export default function AIScanner() {
     return STAGES.length - 1;
   }, [elapsed]);
 
-  // Completed stage ids
   const completed = useMemo(() => {
     const s = new Set<string>();
     let acc = 0;
@@ -73,22 +79,22 @@ export default function AIScanner() {
 
   const current = STAGES[stageIdx];
 
-  // Show overlays after specific elapsed thresholds
   const ms = (n: number) => elapsed >= n;
-  const SHOW_HOOK     = ms(200);
-  const SHOW_RETENTION= ms(STAGES[0].ms + STAGES[1].ms * 0.5);
-  const SHOW_PRESENCE = ms(STAGES[0].ms + STAGES[1].ms + STAGES[2].ms * 0.6);
-  const SHOW_SUBTITLE = ms(STAGES[0].ms + STAGES[1].ms + STAGES[2].ms + STAGES[3].ms * 0.5);
-  const SHOW_CTA      = ms(STAGES[0].ms + STAGES[1].ms + STAGES[2].ms + STAGES[3].ms + STAGES[4].ms + STAGES[5].ms * 0.5);
+  const SHOW_HOOK      = ms(200);
+  const SHOW_RETENTION = ms(STAGES[0].ms + STAGES[1].ms * 0.5);
+  const SHOW_PRESENCE  = ms(STAGES[0].ms + STAGES[1].ms + STAGES[2].ms * 0.6);
+  const SHOW_SUBTITLE  = ms(STAGES[0].ms + STAGES[1].ms + STAGES[2].ms + STAGES[3].ms * 0.5);
+  const SHOW_CTA       = ms(STAGES[0].ms + STAGES[1].ms + STAGES[2].ms + STAGES[3].ms + STAGES[4].ms + STAGES[5].ms * 0.5);
+
+  const hasRealFrames = frames.length > 0;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6 py-10">
       <div className="w-full max-w-xs">
 
-        {/* ── Video preview ─────────────────────────────────────────────── */}
+        {/* Video preview */}
         <div className="relative mx-auto mb-8" style={{ width: 170, height: 302 }}>
 
-          {/* Frame */}
           <div
             className="absolute inset-0 rounded-[28px] overflow-hidden"
             style={{
@@ -97,18 +103,39 @@ export default function AIScanner() {
               boxShadow: '0 0 48px rgba(212,168,67,0.12), 0 24px 64px rgba(0,0,0,0.7)',
             }}
           >
-            {/* Scene ambience */}
-            <div className="absolute inset-0" style={{
-              background: 'radial-gradient(ellipse 80% 60% at 50% 38%, rgba(60,45,25,0.55) 0%, transparent 70%)',
-            }} />
-            <div className="absolute inset-0" style={{
-              background: 'radial-gradient(ellipse 40% 30% at 50% 60%, rgba(30,22,12,0.3) 0%, transparent 60%)',
-            }} />
+            {/* Real frame display */}
+            {hasRealFrames && (
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={frameIdx}
+                  src={frames[frameIdx]}
+                  alt=""
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ filter: 'brightness(0.85)' }}
+                />
+              </AnimatePresence>
+            )}
 
-            {/* Animated scan line */}
+            {/* Fallback ambience (no real frames) */}
+            {!hasRealFrames && (
+              <>
+                <div className="absolute inset-0" style={{
+                  background: 'radial-gradient(ellipse 80% 60% at 50% 38%, rgba(60,45,25,0.55) 0%, transparent 70%)',
+                }} />
+                <div className="absolute inset-0" style={{
+                  background: 'radial-gradient(ellipse 40% 30% at 50% 60%, rgba(30,22,12,0.3) 0%, transparent 60%)',
+                }} />
+              </>
+            )}
+
+            {/* Scan line */}
             <motion.div
               className="absolute left-0 right-0 pointer-events-none"
-              style={{ height: 1 }}
+              style={{ height: 1, zIndex: 10 }}
               animate={{ top: ['0%', '100%'] }}
               transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
             >
@@ -119,14 +146,19 @@ export default function AIScanner() {
               }} />
             </motion.div>
 
-            {/* ── Hook zone overlay ──────────────────────────────────────── */}
+            {/* Dark overlay on real frames so overlays stay readable */}
+            {hasRealFrames && (
+              <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.25)', zIndex: 1 }} />
+            )}
+
+            {/* Hook zone overlay */}
             <AnimatePresence>
               {SHOW_HOOK && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="absolute left-0 right-0"
-                  style={{ top: 0, height: '20%', background: 'rgba(212,168,67,0.06)', borderBottom: '1px solid rgba(212,168,67,0.22)' }}
+                  style={{ top: 0, height: '20%', background: 'rgba(212,168,67,0.06)', borderBottom: '1px solid rgba(212,168,67,0.22)', zIndex: 2 }}
                 >
                   <div className="absolute top-1.5 right-2 flex items-center gap-1">
                     <motion.div
@@ -140,7 +172,7 @@ export default function AIScanner() {
               )}
             </AnimatePresence>
 
-            {/* ── Presence / face detection ──────────────────────────────── */}
+            {/* Presence / face detection */}
             <AnimatePresence>
               {SHOW_PRESENCE && (
                 <motion.div
@@ -153,9 +185,9 @@ export default function AIScanner() {
                     width: 68, height: 76,
                     border: '1px dashed rgba(34,197,94,0.45)',
                     borderRadius: 3,
+                    zIndex: 2,
                   }}
                 >
-                  {/* Green corner marks */}
                   {[
                     { top: -2, left: -2, borderTop: '2px solid #22c55e', borderLeft: '2px solid #22c55e' },
                     { top: -2, right: -2, borderTop: '2px solid #22c55e', borderRight: '2px solid #22c55e' },
@@ -172,14 +204,14 @@ export default function AIScanner() {
               )}
             </AnimatePresence>
 
-            {/* ── CTA zone ──────────────────────────────────────────────── */}
+            {/* CTA zone */}
             <AnimatePresence>
               {SHOW_CTA && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="absolute left-0 right-0"
-                  style={{ bottom: SHOW_RETENTION ? '27%' : '18%', height: '10%', background: 'rgba(239,68,68,0.05)', borderTop: '1px solid rgba(239,68,68,0.2)', borderBottom: '1px solid rgba(239,68,68,0.1)' }}
+                  style={{ bottom: SHOW_RETENTION ? '27%' : '18%', height: '10%', background: 'rgba(239,68,68,0.05)', borderTop: '1px solid rgba(239,68,68,0.2)', borderBottom: '1px solid rgba(239,68,68,0.1)', zIndex: 2 }}
                 >
                   <div className="absolute top-1 left-2">
                     <span style={{ fontSize: 7, color: 'rgba(239,68,68,0.6)', fontFamily: 'monospace' }}>CTA</span>
@@ -188,7 +220,7 @@ export default function AIScanner() {
               )}
             </AnimatePresence>
 
-            {/* ── Subtitle bar ──────────────────────────────────────────── */}
+            {/* Subtitle bar */}
             <AnimatePresence>
               {SHOW_SUBTITLE && (
                 <motion.div
@@ -200,6 +232,7 @@ export default function AIScanner() {
                     height: 13,
                     background: 'rgba(255,255,255,0.07)',
                     border: '1px solid rgba(255,255,255,0.13)',
+                    zIndex: 2,
                   }}
                 >
                   {[45, 28, 38, 22, 32, 18].map((w, i) => (
@@ -212,14 +245,14 @@ export default function AIScanner() {
               )}
             </AnimatePresence>
 
-            {/* ── Retention graph ─────────────────────────────────────────── */}
+            {/* Retention graph */}
             <AnimatePresence>
               {SHOW_RETENTION && (
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="absolute left-1 right-1 bottom-1.5 rounded-xl overflow-hidden"
-                  style={{ height: 38, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(212,168,67,0.14)' }}
+                  style={{ height: 38, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(212,168,67,0.14)', zIndex: 2 }}
                 >
                   <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
                     <defs>
@@ -230,7 +263,6 @@ export default function AIScanner() {
                     </defs>
                     <path d={RET_AREA} fill="url(#rg)" />
                     <path d={RET_LINE} fill="none" stroke="#D4A843" strokeWidth="1.4" />
-                    {/* Drop-off marker */}
                     <line x1={DROP_X} y1="0" x2={DROP_X} y2={H}
                       stroke="rgba(239,68,68,0.55)" strokeWidth="1" strokeDasharray="2,2" />
                     <circle cx={DROP_X} cy={retY(RET[2]).toFixed(1)} r="2"
@@ -244,24 +276,20 @@ export default function AIScanner() {
               )}
             </AnimatePresence>
 
-            {/* Corner brackets (SVG overlay, always visible) */}
+            {/* Corner brackets */}
             <svg
               className="absolute inset-0 pointer-events-none"
               viewBox="0 0 170 302"
-              style={{ width: '100%', height: '100%' }}
+              style={{ width: '100%', height: '100%', zIndex: 3 }}
             >
-              {/* top-left */}
               <path d="M12,34 L12,12 L34,12" fill="none" stroke="rgba(212,168,67,0.65)" strokeWidth="1.5" />
-              {/* top-right */}
               <path d="M136,12 L158,12 L158,34" fill="none" stroke="rgba(212,168,67,0.65)" strokeWidth="1.5" />
-              {/* bottom-left */}
               <path d="M12,268 L12,290 L34,290" fill="none" stroke="rgba(212,168,67,0.65)" strokeWidth="1.5" />
-              {/* bottom-right */}
               <path d="M136,290 L158,290 L158,268" fill="none" stroke="rgba(212,168,67,0.65)" strokeWidth="1.5" />
             </svg>
 
             {/* Live indicator */}
-            <div className="absolute top-3 left-3 flex items-center gap-1">
+            <div className="absolute top-3 left-3 flex items-center gap-1" style={{ zIndex: 4 }}>
               <motion.div
                 animate={{ opacity: [1, 0.2, 1] }}
                 transition={{ duration: 0.9, repeat: Infinity }}
@@ -269,16 +297,23 @@ export default function AIScanner() {
               />
               <span className="font-mono uppercase" style={{ fontSize: 7, color: 'rgba(255,255,255,0.35)' }}>LIVE</span>
             </div>
+
+            {/* Frame counter when real frames available */}
+            {hasRealFrames && (
+              <div className="absolute top-3 right-2 font-mono" style={{ fontSize: 6.5, color: 'rgba(212,168,67,0.5)', zIndex: 4 }}>
+                {frameIdx + 1}/{frames.length}
+              </div>
+            )}
           </div>
 
-          {/* Glow under the frame */}
+          {/* Glow under frame */}
           <div
             className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-32 h-8 blur-xl rounded-full pointer-events-none"
             style={{ background: 'rgba(212,168,67,0.15)' }}
           />
         </div>
 
-        {/* ── Current stage ────────────────────────────────────────────────── */}
+        {/* Current stage */}
         <AnimatePresence mode="wait">
           <motion.div
             key={current.id}
@@ -300,7 +335,7 @@ export default function AIScanner() {
           </motion.div>
         </AnimatePresence>
 
-        {/* ── Completed chips ──────────────────────────────────────────────── */}
+        {/* Completed chips */}
         <div className="flex flex-wrap gap-1.5 justify-center mb-6 min-h-[26px]">
           <AnimatePresence>
             {STAGES.filter((s) => completed.has(s.id)).map((s) => (
@@ -321,7 +356,7 @@ export default function AIScanner() {
           </AnimatePresence>
         </div>
 
-        {/* ── Progress ─────────────────────────────────────────────────────── */}
+        {/* Progress bar */}
         <div
           className="rounded-full overflow-hidden mb-2"
           style={{ height: 3, background: 'rgba(255,255,255,0.06)' }}

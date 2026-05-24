@@ -1,6 +1,9 @@
+import type { PlanId } from './plans';
+
 export interface AuthUser {
   email: string;
   provider?: 'email' | 'google' | 'apple';
+  plan?: PlanId;
 }
 
 const KEY = 'viralyze_user';
