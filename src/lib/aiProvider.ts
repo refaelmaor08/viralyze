@@ -17,6 +17,7 @@ import type {
   VideoFrameData,
   VideoUnderstanding,
   PerceptionGap,
+  ViewerPsychology,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -969,6 +970,62 @@ const DEMO_PERCEPTION_GAPS_EN: PerceptionGap[] = [
   },
 ];
 
+// ─── Demo viewer psychology scenarios ─────────────────────────────────────────
+
+const DEMO_PSYCHOLOGY_HE: ViewerPsychology[] = [
+  {
+    attention:          { score: 62, explanation: 'הפתיחה תפסה אותי, אבל אחרי 5 שניות התחלתי לחשוב "לאן זה הולך?"' },
+    curiosity:          { score: 54, explanation: 'לא ממש חיכיתי בדריכות — ידעתי בערך לאן זה מגיע' },
+    trust:              { score: 58, explanation: 'נראה בסדר, אבל לא הרגשתי שאני מכיר את הבן אדם הזה' },
+    authenticity:       { score: 45, explanation: 'קצת "מוכן" — כמו שמישהו תרגל את זה לפני הצילום' },
+    emotionalConnection:{ score: 41, explanation: 'לא נגע בי — תוכן סבבה, לא יותר מזה' },
+    scrollStoppingPower:{ score: 63, explanation: 'הפריים הראשון עצר אותי, אבל בשנייה 4 כבר חשבתי לגלול' },
+    boredom:            { score: 48, explanation: 'לא שיעמם אותי, אבל לא הייתי עסוק רגשית' },
+    confusion:          { score: 18, explanation: 'הכל ברור — ידעתי מה קורה' },
+    whyStay: ['הפריים הראשון נראה שונה ממה שציפיתי', 'הייתי סקרן לראות איך זה נגמר', 'הקצב לא היה איטי מדי'],
+    whyLeave: ['לא הרגשתי שיש כאן "כאב" שאני מזדהה איתו', 'לא ברור לי מה אני מקבל מזה', 'תוכן שראיתי בגרסאות אחרות'],
+    authenticityExplained: 'הסרטון נראה נכון, אבל משהו בו "נשמע מוכן". כאילו מישהו בנה את זה בכוונה לנראות ספונטני.',
+    emotionExplained: 'לא הגעתי לשום רגש אמיתי. מעניין? כן. נוגע? לא.',
+  },
+  {
+    attention:          { score: 84, explanation: 'לא הרפה ממני — כל שנייה הייתה סיבה להישאר' },
+    curiosity:          { score: 79, explanation: 'רציתי לדעת מה יהיה — היה שם מתח טבעי' },
+    trust:              { score: 77, explanation: 'הרגשתי שזה בן אדם אמיתי שמבין על מה הוא מדבר' },
+    authenticity:       { score: 82, explanation: 'נראה ספונטני — לא כמו שצולם עשר פעמים ונבחר הגרסה הטובה' },
+    emotionalConnection:{ score: 71, explanation: 'הזדהיתי — הרגשתי שזה מדבר ספציפית אליי' },
+    scrollStoppingPower:{ score: 88, explanation: 'עצרתי מיד — הפריים הראשון היה שונה ממה שצפיתי' },
+    boredom:            { score: 15, explanation: 'בכלל לא — נגמר מהר מדי בשבילי' },
+    confusion:          { score: 10, explanation: 'מסר ברור מהשנייה הראשונה' },
+    whyStay: ['הסיפור המשיך להתפתח בצורה שלא ניחשתי', 'הרגשתי שיש פה ערך אמיתי', 'הצד הרגשי תפס אותי לפני שהספקתי לחשוב'],
+    whyLeave: ['בחלק האמצעי הייתה ירידה קטנה בקצב', 'ה-CTA היה קצת פתאומי', 'לא הכרתי את האדם הזה מקודם'],
+    authenticityExplained: 'זה מרגיש אמיתי — כמו שמישהו שיתף משהו שבאמת קרה לו, לא כמו שהוא מנסה למכור לי.',
+    emotionExplained: 'הייתה שם רגש. לא גדולה, אבל כן. הרגשתי שאני לא לבד במה שהוא חווה.',
+  },
+];
+
+const DEMO_PSYCHOLOGY_EN: ViewerPsychology[] = [
+  {
+    attention:          { score: 68, explanation: 'Caught my eye at first, but the middle section drifted off' },
+    curiosity:          { score: 61, explanation: "There was some pull to keep watching, but nothing urgent" },
+    trust:              { score: 63, explanation: 'Seemed credible but I didn\'t feel like I knew them' },
+    authenticity:       { score: 55, explanation: 'Felt slightly rehearsed — like they tried hard to look natural' },
+    emotionalConnection:{ score: 49, explanation: "Couldn't connect personally — nothing hit home for me" },
+    scrollStoppingPower:{ score: 71, explanation: 'Good opening frame, then the grip loosened' },
+    boredom:            { score: 42, explanation: 'Not boring exactly, but not gripping either' },
+    confusion:          { score: 15, explanation: 'Message stayed clear throughout' },
+    whyStay: ['The opening frame was visually unexpected', 'Decent pacing kept things moving', 'Wanted to see how it ended'],
+    whyLeave: ['Nothing felt personally relevant to me', 'No emotional hook to hold on to', "Content I've seen in different forms before"],
+    authenticityExplained: 'It feels slightly staged — like the person knew the camera was rolling and adjusted accordingly. Hard to pinpoint, but it\'s there.',
+    emotionExplained: 'Never reached an emotional beat — informative content, but nothing that touched me.',
+  },
+];
+
+async function getDemoViewerPsychology(language: string): Promise<ViewerPsychology> {
+  await new Promise((r) => setTimeout(r, 1400 + Math.random() * 900));
+  const pool = language === 'english' ? DEMO_PSYCHOLOGY_EN : DEMO_PSYCHOLOGY_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 async function getDemoPerception(language: string): Promise<PerceptionGap> {
   await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
   const pool = language === 'english' ? DEMO_PERCEPTION_GAPS_EN : DEMO_PERCEPTION_GAPS_HE;
@@ -1013,6 +1070,18 @@ export async function analyzeVideo(
   // Default: OpenAI
   const { analyzeVideo: openaiAnalyze } = await import('./openai');
   return openaiAnalyze(frameData, context);
+}
+
+export async function analyzeViewerPsychology(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<ViewerPsychology> {
+  if (AI_MODE === 'demo') {
+    return getDemoViewerPsychology(context.language);
+  }
+  const { analyzeViewerPsychology: openaiPsychology } = await import('./openai');
+  return openaiPsychology(frameData, context, understanding);
 }
 
 export async function analyzeCompetitor(

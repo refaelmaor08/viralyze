@@ -153,6 +153,28 @@ export interface VideoFrameData {
   height: number;
 }
 
+// ─── Viewer Psychology Engine (Stage 3) ───────────────────────────────────────
+
+export interface PsychologyMetric {
+  score: number;
+  explanation: string;
+}
+
+export interface ViewerPsychology {
+  attention: PsychologyMetric;
+  curiosity: PsychologyMetric;
+  trust: PsychologyMetric;
+  authenticity: PsychologyMetric;
+  emotionalConnection: PsychologyMetric;
+  scrollStoppingPower: PsychologyMetric;
+  boredom: PsychologyMetric;
+  confusion: PsychologyMetric;
+  whyStay: string[];
+  whyLeave: string[];
+  authenticityExplained: string;
+  emotionExplained: string;
+}
+
 export interface CreatorIdea {
   title: string;
   hook: string;

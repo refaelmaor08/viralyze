@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -548,6 +548,127 @@ Study the frames carefully and return ONLY this JSON:
     creatorIntent: String(raw.creatorIntent || ''),
     viewerFirstImpression: String(raw.viewerFirstImpression || ''),
     confidence: Math.max(60, Math.min(99, Math.round(Number(raw.confidence) || 78))),
+  };
+}
+
+export async function analyzeViewerPsychology(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<ViewerPsychology> {
+  const isHe = context.language === 'hebrew';
+  const dur = Math.round(frameData.duration);
+  const platformStr = (context.platforms ?? []).map((p) => platformLabels[p] ?? p).join(', ') || 'Instagram';
+
+  const content: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `You are a real TikTok and Instagram Reels viewer who just watched this ${dur}-second ${platformStr} video.
+
+WHAT THIS VIDEO IS: ${understanding.primaryType} — ${understanding.creatorIntent}
+
+Think and respond like a regular person texting a friend after watching — honest, direct, personal. NOT like an AI or analyst.
+
+Study the ${frameData.frames.length} frames carefully. Then score your viewing experience:
+
+POSITIVE METRICS — higher score is better:
+- attention: did this grab and hold your attention throughout?
+- curiosity: did you feel pulled to keep watching and see what happens?
+- trust: do you trust this person/brand/message?
+- authenticity: does this feel real and genuine, or staged and fake?
+- emotionalConnection: did you feel personally connected or emotionally moved?
+- scrollStoppingPower: how likely are you to stop scrolling when this appears?
+
+NEGATIVE METRICS — higher score is WORSE (high = bad experience):
+- boredom: how bored did you feel? (0 = not bored at all, 100 = completely bored and zoning out)
+- confusion: how confused were you? (0 = totally clear, 100 = completely lost)
+
+Also answer in the same language:
+- whyStay: exactly 3 specific reasons why a viewer might stay and keep watching
+- whyLeave: exactly 3 specific reasons why a viewer might scroll past or quit
+- authenticityExplained: 1-2 sentences — why does this feel real OR fake to a regular viewer?
+- emotionExplained: 1-2 sentences — why does this feel emotional OR empty to a regular viewer?
+
+${isHe ? `HEBREW RULES — MANDATORY. Write like a real Israeli person, not a robot.
+
+❌ WRONG: "רמת הקשב של הצופים גבוהה כתוצאה מהפריים הפותח"
+✅ RIGHT: "הפריים הראשון עצר אותי — לא ידעתי מה יהיה"
+
+❌ WRONG: "קיים פוטנציאל לחיבור רגשי בקרב קהל היעד"
+✅ RIGHT: "הרגשתי משהו — ניכר שזה אמיתי"
+
+❌ WRONG: "רמת האותנטיות נמוכה"
+✅ RIGHT: "נראה מבוים — לא מאמין לזה"
+
+❌ WRONG: "קיימת ירידה בשיעור השמירה בחלק האמצעי"
+✅ RIGHT: "בחלק האמצעי התחלתי לחשוב על דברים אחרים"
+
+Write all text fields in natural Israeli Hebrew. Short, punchy, personal.` : `Write all text fields in direct, conversational English. Short and personal — like texting a friend.`}
+
+Return ONLY valid JSON:
+{
+  "attention": { "score": <0-100>, "explanation": "<one short personal sentence in ${isHe ? 'Hebrew' : 'English'}>" },
+  "curiosity": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "trust": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "authenticity": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "emotionalConnection": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "scrollStoppingPower": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "boredom": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "confusion": { "score": <0-100>, "explanation": "<one short personal sentence>" },
+  "whyStay": ["<specific reason 1>", "<specific reason 2>", "<specific reason 3>"],
+  "whyLeave": ["<specific reason 1>", "<specific reason 2>", "<specific reason 3>"],
+  "authenticityExplained": "<1-2 sentences>",
+  "emotionExplained": "<1-2 sentences>"
+}`,
+    },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'low' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a real social media viewer analyzing your own psychological experience while watching a video. You speak in first person, naturally, like a real person — not an analyst. ${isHe ? 'You write in simple, natural Israeli Hebrew.' : 'You write in simple, direct English.'} Respond ONLY with valid JSON.`,
+      },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.4,
+    seed: 42,
+    max_tokens: 1200,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  const clampScore = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
+
+  const parseMetric = (key: string): PsychologyMetric => ({
+    score: clampScore(raw[key]?.score),
+    explanation: String(raw[key]?.explanation || ''),
+  });
+
+  const parseStringArray = (v: unknown, max = 3): string[] =>
+    Array.isArray(v) ? v.slice(0, max).map(String) : [];
+
+  return {
+    attention: parseMetric('attention'),
+    curiosity: parseMetric('curiosity'),
+    trust: parseMetric('trust'),
+    authenticity: parseMetric('authenticity'),
+    emotionalConnection: parseMetric('emotionalConnection'),
+    scrollStoppingPower: parseMetric('scrollStoppingPower'),
+    boredom: parseMetric('boredom'),
+    confusion: parseMetric('confusion'),
+    whyStay: parseStringArray(raw.whyStay),
+    whyLeave: parseStringArray(raw.whyLeave),
+    authenticityExplained: String(raw.authenticityExplained || ''),
+    emotionExplained: String(raw.emotionExplained || ''),
   };
 }
 
