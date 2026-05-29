@@ -18,6 +18,7 @@ import type {
   VideoUnderstanding,
   PerceptionGap,
   ViewerPsychology,
+  TimelineAnalysis,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -970,6 +971,64 @@ const DEMO_PERCEPTION_GAPS_EN: PerceptionGap[] = [
   },
 ];
 
+// ─── Demo timeline scenarios ───────────────────────────────────────────────────
+
+const DEMO_TIMELINES_HE: TimelineAnalysis[] = [
+  {
+    moments: [
+      { startSec: 0, endSec: 2, quality: 'critical', issue: 'hook-weak', title: 'פתיחה ריקה', description: 'שתי שניות עברו ולא קרה כלום — הצופה עוד לא מבין למה הוא צריך להישאר', fix: 'התחל ישירות מהרגע שמשהו קורה — קצץ את ה-0-2 שניות הראשונות' },
+      { startSec: 2, endSec: 6, quality: 'neutral', title: 'כניסה לנושא', description: 'הצופה מתחיל להבין על מה הסרטון, אבל עדיין לא מרגיש שיש כאן ערך' },
+      { startSec: 6, endSec: 11, quality: 'good', title: 'הסרטון תופס קצב', description: 'יש משהו מסקרן כאן — הצופה נשאר' },
+      { startSec: 11, endSec: 17, quality: 'weak', issue: 'pacing-slow', title: 'הקצב נופל', description: 'פחות תנועה בין פריימים, האנרגיה יורדת — כאן חלק מהצופים יגללו', fix: 'האץ את הקצב ב-15% או הוסף חתך נוסף בשנייה 13-14' },
+      { startSec: 17, endSec: 23, quality: 'strong', title: 'שיא הסרטון', description: 'הרגע הכי חזק — הצופה מרוכז ומעורב' },
+      { startSec: 23, endSec: 28, quality: 'neutral', title: 'ירידה מהשיא', description: 'הרגע הטוב עבר, הסרטון מתחיל להסתכם' },
+      { startSec: 28, endSec: 33, quality: 'weak', issue: 'cta-weak', title: 'CTA חלש', description: 'הסרטון נגמר בלי לבקש שום דבר ספציפי — הצופה יגלול הלאה', fix: 'הוסף CTA ברור: "שמור את זה" / "שתף עם מישהו" — מילה אחת, פעולה אחת' },
+    ],
+    criticalDropSec: 1,
+    bestMomentSec: 19,
+    retentionEstimate: 34,
+    summary: 'הבעיה הגדולה ביותר היא הפתיחה — שתי שניות ריקות שהורגות 40% מהצופים לפני שהסרטון בכלל מתחיל. החלק האמצעי עובד, אבל הירידה בשנייה 11-17 מסוכנת. הסיום חלש ולא ממיר.',
+  },
+  {
+    moments: [
+      { startSec: 0, endSec: 2, quality: 'strong', title: 'הוק מיידי', description: 'הפריים הראשון עוצר גלילה — ברור שיש פה משהו' },
+      { startSec: 2, endSec: 5, quality: 'good', title: 'בניית עניין', description: 'הסרטון בונה מתח טוב — הצופה רוצה לדעת מה יהיה' },
+      { startSec: 5, endSec: 10, quality: 'strong', title: 'שיא הסרטון', description: 'זה הרגע הכי חזק — קצב, אנרגיה, ורגש ביחד' },
+      { startSec: 10, endSec: 16, quality: 'good', title: 'ממשיכים חזק', description: 'הסרטון שומר על הקצב — הצופה לא חושב לגלול' },
+      { startSec: 16, endSec: 22, quality: 'neutral', issue: 'pacing-slow', title: 'קצב קצת יורד', description: 'יש ירידה קטנה — לא מספיקה לגרום לנטישה, אבל מורגשת', fix: 'קצץ 2-3 שניות מהחלק הזה' },
+      { startSec: 22, endSec: 27, quality: 'good', title: 'חזרה לקצב', description: 'הסרטון מסיים חזק יחסית' },
+      { startSec: 27, endSec: 30, quality: 'strong', title: 'CTA עובד', description: 'הסיום ברור ומניע לפעולה — הצופה יודע מה לעשות' },
+    ],
+    criticalDropSec: null,
+    bestMomentSec: 7,
+    retentionEstimate: 68,
+    summary: 'סרטון חזק עם הוק טוב ושיא ברור. הבעיה היחידה היא ירידה קטנה בקצב בשנייה 16-22 שאפשר לתקן בקיצוץ קצר. 68% מהצופים יגיעו לסוף — זה טוב מאוד.',
+  },
+];
+
+const DEMO_TIMELINES_EN: TimelineAnalysis[] = [
+  {
+    moments: [
+      { startSec: 0, endSec: 3, quality: 'critical', issue: 'hook-weak', title: 'Dead opening', description: 'Three seconds passed and nothing happened — viewer has no reason to stay', fix: 'Start mid-action. Cut everything before the moment something actually happens' },
+      { startSec: 3, endSec: 7, quality: 'neutral', title: 'Setting the topic', description: 'Viewer starts understanding the subject but still no clear value signal' },
+      { startSec: 7, endSec: 13, quality: 'good', title: 'Video finds its pace', description: 'Something interesting is happening — viewer stays' },
+      { startSec: 13, endSec: 19, quality: 'weak', issue: 'pacing-slow', title: 'Pacing drops', description: 'Less movement between frames, energy falls — some viewers will scroll here', fix: 'Speed up 15% or add a cut at second 15 to inject energy' },
+      { startSec: 19, endSec: 25, quality: 'strong', title: 'Video peaks', description: 'Strongest moment — viewer is focused and engaged' },
+      { startSec: 25, endSec: 30, quality: 'weak', issue: 'cta-weak', title: 'Weak ending', description: 'Video ends without asking for anything specific — viewer scrolls on', fix: 'Add one specific CTA: "Save this" / "Share with someone who needs it"' },
+    ],
+    criticalDropSec: 2,
+    bestMomentSec: 21,
+    retentionEstimate: 31,
+    summary: 'The opening kills this video before it starts — three dead seconds that lose 40% of viewers. The middle section recovers well but pacing drops at 13-19 seconds. The ending is generic and converts no one.',
+  },
+];
+
+async function getDemoTimeline(language: string): Promise<TimelineAnalysis> {
+  await new Promise((r) => setTimeout(r, 1600 + Math.random() * 900));
+  const pool = language === 'english' ? DEMO_TIMELINES_EN : DEMO_TIMELINES_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ─── Demo viewer psychology scenarios ─────────────────────────────────────────
 
 const DEMO_PSYCHOLOGY_HE: ViewerPsychology[] = [
@@ -1070,6 +1129,18 @@ export async function analyzeVideo(
   // Default: OpenAI
   const { analyzeVideo: openaiAnalyze } = await import('./openai');
   return openaiAnalyze(frameData, context);
+}
+
+export async function analyzeTimeline(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<TimelineAnalysis> {
+  if (AI_MODE === 'demo') {
+    return getDemoTimeline(context.language);
+  }
+  const { analyzeTimeline: openaiTimeline } = await import('./openai');
+  return openaiTimeline(frameData, context, understanding);
 }
 
 export async function analyzeViewerPsychology(

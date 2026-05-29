@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData, VideoUnderstanding, PerceptionGap, ViewerPsychology } from '@/types';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData, VideoUnderstanding, PerceptionGap, ViewerPsychology, TimelineAnalysis } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
@@ -17,6 +17,7 @@ import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
 import UnderstandingResult from '@/components/analyze/UnderstandingResult';
 import PerceptionGapResult from '@/components/analyze/PerceptionGapResult';
 import ViewerPsychologyResult from '@/components/analyze/ViewerPsychologyResult';
+import TimelineResult from '@/components/analyze/TimelineResult';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
@@ -24,7 +25,7 @@ const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader')
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
 const AnalysisHistory = dynamic(() => import('@/components/analyze/AnalysisHistory'), { ssr: false });
 
-type Phase = 'preanalysis' | 'form' | 'understanding' | 'understood' | 'perception' | 'perceived' | 'psychology' | 'psychologized' | 'analyzing' | 'error';
+type Phase = 'preanalysis' | 'form' | 'understanding' | 'understood' | 'perception' | 'perceived' | 'psychology' | 'psychologized' | 'timeline' | 'timelined' | 'analyzing' | 'error';
 
 function AnalyzeContent() {
   const router = useRouter();
@@ -43,6 +44,7 @@ function AnalyzeContent() {
   const [understanding, setUnderstanding] = useState<VideoUnderstanding | null>(null);
   const [perceptionGap, setPerceptionGap] = useState<PerceptionGap | null>(null);
   const [viewerPsychology, setViewerPsychology] = useState<ViewerPsychology | null>(null);
+  const [timelineAnalysis, setTimelineAnalysis] = useState<TimelineAnalysis | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { user, plan, remainingAnalyses } = useAuth();
@@ -300,6 +302,49 @@ function AnalyzeContent() {
         const data: PerceptionGap = await res.json();
         setPerceptionGap(data);
         setPhase('perceived');
+      } else {
+        await runFullAnalysis();
+      }
+    } catch {
+      await runFullAnalysis();
+    }
+  }, [context, frameDataRef, understanding, runFullAnalysis]);
+
+  // Stage 4: timeline — called after viewer psychology result
+  const handleTimeline = useCallback(async () => {
+    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
+
+    if (IS_DEMO || !frameData.frames.length || !understanding) {
+      await runFullAnalysis();
+      return;
+    }
+
+    setPhase('timeline');
+
+    try {
+      const res = await fetch('/api/timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frameData,
+          context: {
+            platforms: context.platforms ?? ['instagram'],
+            language: context.language || 'hebrew',
+            niche: context.niche,
+            goals: context.goals,
+            contentType: context.contentType,
+            editability: context.editability,
+            audienceAge: context.audienceAge,
+            audienceGender: context.audienceGender,
+          } satisfies SimpleVideoContext,
+          understanding,
+        }),
+      });
+
+      if (res.ok) {
+        const data: TimelineAnalysis = await res.json();
+        setTimelineAnalysis(data);
+        setPhase('timelined');
       } else {
         await runFullAnalysis();
       }
@@ -840,6 +885,67 @@ function AnalyzeContent() {
           >
             <ViewerPsychologyResult
               psychology={viewerPsychology}
+              onContinue={handleTimeline}
+            />
+          </motion.div>
+        )}
+
+        {/* Timeline — loading state */}
+        {phase === 'timeline' && (
+          <motion.div
+            key="timeline"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
+              style={{
+                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
+                border: '1px solid rgba(212,168,67,0.25)',
+                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
+              }}
+            >
+              <span className="text-3xl">⏱️</span>
+            </motion.div>
+
+            <h2 className="text-xl font-black text-white mb-2 text-center">ממפה את ציר הזמן...</h2>
+            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
+              ה-AI בוחן כל רגע בסרטון ומזהה היכן הקשב נופל, הקצב מאט, וההוק נחלש
+            </p>
+
+            <div className="flex items-center gap-2">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: '#D4A843' }}
+                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+
+            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
+              Stage 4 · Timeline Analysis Engine
+            </p>
+          </motion.div>
+        )}
+
+        {/* Timelined — show result */}
+        {phase === 'timelined' && timelineAnalysis && (
+          <motion.div
+            key="timelined"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10"
+          >
+            <TimelineResult
+              analysis={timelineAnalysis}
               onContinue={runFullAnalysis}
             />
           </motion.div>

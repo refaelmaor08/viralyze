@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -548,6 +548,147 @@ Study the frames carefully and return ONLY this JSON:
     creatorIntent: String(raw.creatorIntent || ''),
     viewerFirstImpression: String(raw.viewerFirstImpression || ''),
     confidence: Math.max(60, Math.min(99, Math.round(Number(raw.confidence) || 78))),
+  };
+}
+
+export async function analyzeTimeline(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<TimelineAnalysis> {
+  const isHe = context.language === 'hebrew';
+  const dur = Math.round(frameData.duration);
+  const frameCount = frameData.frames.length;
+
+  // Build approximate frame timestamps for context
+  const frameTimestamps = Array.from({ length: frameCount }, (_, i) => {
+    const t = i === 0 ? 0.3 : i === frameCount - 1 ? dur - 0.5 : Math.round((dur / (frameCount - 1)) * i * 10) / 10;
+    return Math.min(t, dur);
+  });
+
+  const platformStr = (context.platforms ?? []).map((p) => platformLabels[p] ?? p).join(', ') || 'Instagram';
+
+  const content: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `You are a video timeline analyst for ${platformStr}.
+
+VIDEO: ${dur} seconds | ${understanding.primaryType} | ${frameCount} frames at: ${frameTimestamps.map((t) => `${t}s`).join(', ')}
+
+YOUR TASK: Analyze this video MOMENT BY MOMENT. Break it into 6-10 time segments covering the FULL duration (0 to ${dur}s).
+
+For each segment, think: what is a real viewer experiencing at this exact moment?
+- Is their attention rising, holding, or dropping?
+- Is something specific going wrong (hook too slow, pacing dies, confusing, payoff never comes)?
+- What would a viewer text a friend about this moment?
+
+SEGMENT RULES:
+- First segment starts at 0. Last segment ends at exactly ${dur}.
+- Each segment: 2-5 seconds, no gaps between them.
+- Assign quality: "strong" | "good" | "neutral" | "weak" | "critical"
+- For weak/critical, assign issue: "attention-drop" | "pacing-slow" | "confusion" | "hook-weak" | "payoff-late" | "dead-air" | "cta-weak"
+- For weak/critical, write a fix.
+
+${isHe ? `MANDATORY HEBREW RULES — write like a person, not a report:
+
+❌ WRONG title: "ירידה בשיעור שמירת הצופים"
+✅ RIGHT title: "הצופה מאבד עניין"
+
+❌ WRONG description: "קיימת בעיה בקצב העריכה בשלב זה"
+✅ RIGHT description: "שתי שניות עוברות ולא קורה כלום — הצופה מתחיל לגלול"
+
+❌ WRONG fix: "מומלץ לשפר את קצב העריכה"
+✅ RIGHT fix: "הוסף חתך — זה נגרר, קצץ 2 שניות מכאן"
+
+ALL text fields in natural Israeli Hebrew. Short and punchy.` : `ALL text fields in direct conversational English. Short and punchy — like a real editor giving notes.`}
+
+Also provide:
+- criticalDropSec: the exact second where the biggest viewer drop-off likely happens (or null if no major drop)
+- bestMomentSec: the exact second where the video peaks (strongest engagement moment)
+- retentionEstimate: % of viewers who watch to the very end (0–100, be realistic and harsh)
+- summary: 2–3 sentences in simple ${isHe ? 'Hebrew' : 'English'} — the overall timeline health
+
+Return ONLY valid JSON:
+{
+  "moments": [
+    {
+      "startSec": <number>,
+      "endSec": <number>,
+      "quality": "strong|good|neutral|weak|critical",
+      "issue": "attention-drop|pacing-slow|confusion|hook-weak|payoff-late|dead-air|cta-weak|null",
+      "title": "<3-5 words in ${isHe ? 'Hebrew' : 'English'}>",
+      "description": "<one honest sentence>",
+      "fix": "<one short actionable fix, ONLY for weak or critical, else null>"
+    }
+  ],
+  "criticalDropSec": <number or null>,
+  "bestMomentSec": <number or null>,
+  "retentionEstimate": <0-100>,
+  "summary": "<2-3 sentences>"
+}`,
+    },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'low' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a precise video timeline analyst who maps viewer psychology to specific time segments. You think like a real viewer, not an analyst. You write direct, human observations — never corporate or robotic language. ${isHe ? 'Write in simple natural Israeli Hebrew.' : 'Write in direct conversational English.'} Respond ONLY with valid JSON.`,
+      },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.3,
+    seed: 42,
+    max_tokens: 1400,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  const VALID_QUALITY: MomentQuality[] = ['strong', 'good', 'neutral', 'weak', 'critical'];
+  const VALID_ISSUE: MomentIssue[] = ['attention-drop', 'pacing-slow', 'confusion', 'hook-weak', 'payoff-late', 'dead-air', 'cta-weak'];
+
+  const sanitizeQuality = (v: unknown): MomentQuality =>
+    VALID_QUALITY.includes(v as MomentQuality) ? (v as MomentQuality) : 'neutral';
+
+  const sanitizeIssue = (v: unknown): MomentIssue | undefined =>
+    VALID_ISSUE.includes(v as MomentIssue) ? (v as MomentIssue) : undefined;
+
+  const moments: TimelineMoment[] = Array.isArray(raw.moments)
+    ? raw.moments.slice(0, 12).map((m: Record<string, unknown>) => {
+        const quality = sanitizeQuality(m.quality);
+        const issue = sanitizeIssue(m.issue);
+        const isNegative = quality === 'weak' || quality === 'critical';
+        return {
+          startSec: Math.max(0, Math.round(Number(m.startSec) || 0)),
+          endSec: Math.min(dur, Math.round(Number(m.endSec) || dur)),
+          quality,
+          issue,
+          title: String(m.title || ''),
+          description: String(m.description || ''),
+          fix: isNegative && m.fix && m.fix !== 'null' ? String(m.fix) : undefined,
+        };
+      })
+    : [];
+
+  const parseSecOrNull = (v: unknown): number | null => {
+    const n = Number(v);
+    return isFinite(n) && n >= 0 ? Math.round(n) : null;
+  };
+
+  return {
+    moments,
+    criticalDropSec: parseSecOrNull(raw.criticalDropSec),
+    bestMomentSec: parseSecOrNull(raw.bestMomentSec),
+    retentionEstimate: Math.max(0, Math.min(100, Math.round(Number(raw.retentionEstimate) || 40))),
+    summary: String(raw.summary || ''),
   };
 }
 

@@ -153,6 +153,37 @@ export interface VideoFrameData {
   height: number;
 }
 
+// ─── Timeline Analysis Engine (Stage 4) ───────────────────────────────────────
+
+export type MomentQuality = 'strong' | 'good' | 'neutral' | 'weak' | 'critical';
+
+export type MomentIssue =
+  | 'attention-drop'
+  | 'pacing-slow'
+  | 'confusion'
+  | 'hook-weak'
+  | 'payoff-late'
+  | 'dead-air'
+  | 'cta-weak';
+
+export interface TimelineMoment {
+  startSec: number;
+  endSec: number;
+  quality: MomentQuality;
+  issue?: MomentIssue;
+  title: string;
+  description: string;
+  fix?: string;
+}
+
+export interface TimelineAnalysis {
+  moments: TimelineMoment[];
+  criticalDropSec: number | null;
+  bestMomentSec: number | null;
+  retentionEstimate: number;
+  summary: string;
+}
+
 // ─── Viewer Psychology Engine (Stage 3) ───────────────────────────────────────
 
 export interface PsychologyMetric {
