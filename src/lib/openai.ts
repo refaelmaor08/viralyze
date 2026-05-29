@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -548,6 +548,215 @@ Study the frames carefully and return ONLY this JSON:
     creatorIntent: String(raw.creatorIntent || ''),
     viewerFirstImpression: String(raw.viewerFirstImpression || ''),
     confidence: Math.max(60, Math.min(99, Math.round(Number(raw.confidence) || 78))),
+  };
+}
+
+// ─── Adaptive Analysis Engine ─────────────────────────────────────────────────
+
+function detectProfile(primaryType: string): AnalysisProfileType {
+  const map: Record<string, AnalysisProfileType> = {
+    'advertisement':    'conversion',
+    'showcase':         'conversion',
+    'luxury-branding':  'conversion',
+    'ugc':              'authenticity',
+    'review':           'authenticity',
+    'organic-tiktok':   'virality',
+    'trend-content':    'virality',
+    'entertainment':    'virality',
+    'storytelling':     'connection',
+    'personal-branding':'connection',
+    'emotional':        'connection',
+    'educational':      'value',
+    'tutorial':         'value',
+    'cinematic-edit':   'aesthetic',
+  };
+  return map[primaryType] ?? 'aesthetic';
+}
+
+interface MetricDef { key: string; heLabel: string; enLabel: string; question: string; }
+interface ProfileConfig { heTitle: string; enTitle: string; heContext: string; enContext: string; metrics: MetricDef[]; }
+
+const PROFILE_CONFIGS: Record<AnalysisProfileType, ProfileConfig> = {
+  conversion: {
+    heTitle: 'ניתוח המרה', enTitle: 'Conversion Analysis',
+    heContext: 'חשוב כמו מומחה פרסום — כל אלמנט חייב לשרת את מטרת הגרימה לפעולה.',
+    enContext: 'Think like a performance marketer — every element must serve the goal of conversion.',
+    metrics: [
+      { key: 'cta',           heLabel: 'כוח ה-CTA',       enLabel: 'CTA Strength',     question: 'How clear, compelling and well-timed is the call-to-action?' },
+      { key: 'persuasion',    heLabel: 'כוח שכנוע',       enLabel: 'Persuasion',        question: 'How persuasive is the messaging and delivery?' },
+      { key: 'productClarity',heLabel: 'בהירות המוצר',    enLabel: 'Product Clarity',   question: 'How clearly does the viewer understand what is being offered?' },
+      { key: 'urgency',       heLabel: 'תחושת דחיפות',    enLabel: 'Urgency',           question: 'How well does it create urgency, scarcity, or a reason to act now?' },
+      { key: 'trustSignals',  heLabel: 'אותות אמינות',    enLabel: 'Trust Signals',     question: 'How credible, authoritative, or socially-proven does this feel?' },
+      { key: 'purchaseIntent',heLabel: 'כוונת רכישה',     enLabel: 'Purchase Intent',   question: 'How likely is a viewer to take the desired action after watching?' },
+    ],
+  },
+  authenticity: {
+    heTitle: 'ניתוח אותנטיות', enTitle: 'Authenticity Analysis',
+    heContext: 'חשוב כמו צופה סקפטי שראה אלפי UGC מזויפים — מה מרגיש אמיתי ומה לא.',
+    enContext: 'Think like a skeptical viewer who has seen thousands of fake UGC videos.',
+    metrics: [
+      { key: 'naturalness',  heLabel: 'ספונטניות',        enLabel: 'Naturalness',       question: 'Does this feel genuinely spontaneous or clearly rehearsed/staged?' },
+      { key: 'trustFactor',  heLabel: 'רמת אמון',         enLabel: 'Trust Factor',      question: 'Do you instinctively trust this person and what they say?' },
+      { key: 'realism',      heLabel: 'ריאליזם',           enLabel: 'Realism',           question: 'Does the environment, reaction, and context feel like real life?' },
+      { key: 'relatability', heLabel: 'הזדהות',           enLabel: 'Relatability',       question: 'Can a real viewer see themselves in this situation?' },
+      { key: 'credibility',  heLabel: 'מהימנות',          enLabel: 'Credibility',        question: 'How credible is this person as a genuine user, not a paid actor?' },
+      { key: 'socialProof',  heLabel: 'הוכחה חברתית',    enLabel: 'Social Proof',       question: 'How effectively does this convey real-world validation from real people?' },
+    ],
+  },
+  virality: {
+    heTitle: 'ניתוח ויראליות', enTitle: 'Virality Analysis',
+    heContext: 'חשוב כמו מישהו שגולל TikTok בשעה שתיים בלילה — מה עוצר את הגלילה? מה שולחים לחבר?',
+    enContext: 'Think like someone doomscrolling TikTok at 2am. What stops the scroll? What gets shared?',
+    metrics: [
+      { key: 'scrollStopping',  heLabel: 'עצירת גלילה',     enLabel: 'Scroll-Stopping',   question: 'How likely is this to stop someone mid-scroll in the first 2 seconds?' },
+      { key: 'trendAlignment',  heLabel: 'התאמה לטרנד',     enLabel: 'Trend Alignment',   question: 'How well does this match the energy and format of current trending content?' },
+      { key: 'replayValue',     heLabel: 'ערך צפייה חוזרת', enLabel: 'Replay Value',       question: 'Would someone watch this twice? Is there something to catch the second time?' },
+      { key: 'addictiveness',   heLabel: 'ממכריות',          enLabel: 'Addictiveness',      question: 'Does this create dopamine hits or loops that keep you watching?' },
+      { key: 'sharingTrigger',  heLabel: 'טריגר שיתוף',     enLabel: 'Sharing Trigger',   question: 'How strongly does this trigger the urge to send to a friend or repost?' },
+      { key: 'memorability',    heLabel: 'זכירות',           enLabel: 'Memorability',       question: 'Will viewers remember this an hour later? Is there a moment that sticks?' },
+    ],
+  },
+  connection: {
+    heTitle: 'ניתוח חיבור', enTitle: 'Connection Analysis',
+    heContext: 'חשוב כמו צופה שצריך להרגיש משהו אמיתי — האם הסרטון הזה נוגע בלב?',
+    enContext: 'Think like a viewer who needs to feel something real. Does this move you?',
+    metrics: [
+      { key: 'emotionalDepth',     heLabel: 'עומק רגשי',       enLabel: 'Emotional Depth',      question: 'How emotionally resonant and moving is this content?' },
+      { key: 'narrativeStrength',  heLabel: 'כוח הנרטיב',      enLabel: 'Narrative Strength',   question: 'How compelling is the story? Is there a clear emotional arc?' },
+      { key: 'vulnerability',      heLabel: 'פגיעות ואמינות',  enLabel: 'Vulnerability',        question: 'How much genuine openness or vulnerability does the creator show?' },
+      { key: 'audienceConnection', heLabel: 'חיבור לקהל',      enLabel: 'Audience Connection',  question: 'How connected does the viewer feel to the creator or subject?' },
+      { key: 'messagePower',       heLabel: 'כוח המסר',        enLabel: 'Message Power',        question: 'How clear, memorable, and impactful is the core message?' },
+      { key: 'transformationArc',  heLabel: 'מסלול שינוי',     enLabel: 'Transformation Arc',   question: 'How effectively does this take the viewer on a before-to-after journey?' },
+    ],
+  },
+  value: {
+    heTitle: 'ניתוח ערך', enTitle: 'Value Analysis',
+    heContext: 'חשוב כמו מישהו שפתח את הסרטון כדי ללמוד משהו שימושי — קיבל את מה שחיפש?',
+    enContext: 'Think like someone who clicked hoping to learn something useful. Did they get it fast enough?',
+    metrics: [
+      { key: 'valueSpeed',    heLabel: 'מהירות מתן ערך',  enLabel: 'Value Speed',          question: 'How fast does the viewer get to the actual value or insight?' },
+      { key: 'clarity',       heLabel: 'בהירות',           enLabel: 'Clarity',              question: 'How clearly is the information or instruction communicated?' },
+      { key: 'actionability', heLabel: 'יישומיות',         enLabel: 'Actionability',        question: 'How immediately applicable is this? Can the viewer use it today?' },
+      { key: 'expertise',     heLabel: 'מומחיות',          enLabel: 'Expertise Credibility', question: 'How much does the presenter come across as a trusted expert?' },
+      { key: 'savePotential', heLabel: 'פוטנציאל שמירה',  enLabel: 'Save Potential',       question: 'How likely is a viewer to save this for future reference?' },
+      { key: 'uniqueInsight', heLabel: 'ייחודיות הידע',   enLabel: 'Unique Insight',       question: 'Does this offer something the viewer couldn\'t easily find elsewhere?' },
+    ],
+  },
+  aesthetic: {
+    heTitle: 'ניתוח ויזואל', enTitle: 'Aesthetic Analysis',
+    heContext: 'חשוב כמו במאי קריאייטיב שמעריך יצירה ויזואלית.',
+    enContext: 'Think like a creative director evaluating a visual piece.',
+    metrics: [
+      { key: 'visualImpact',       heLabel: 'עוצמה ויזואלית',  enLabel: 'Visual Impact',        question: 'How visually striking and memorable is this?' },
+      { key: 'moodConsistency',    heLabel: 'עקביות אווירה',   enLabel: 'Mood Consistency',     question: 'How consistent and intentional is the visual mood throughout?' },
+      { key: 'productionQuality',  heLabel: 'איכות ייצור',     enLabel: 'Production Quality',   question: 'How polished and technically executed is this?' },
+      { key: 'uniqueness',         heLabel: 'ייחודיות',         enLabel: 'Uniqueness',            question: 'How visually distinctive is this from typical content in this category?' },
+      { key: 'audienceResonance',  heLabel: 'תהדהוד קהל',      enLabel: 'Audience Resonance',   question: 'How effectively does the visual style connect with the target audience?' },
+      { key: 'brandConsistency',   heLabel: 'עקביות מותג',     enLabel: 'Brand Consistency',    question: 'How cohesive and recognizable is the brand visual identity?' },
+    ],
+  },
+};
+
+export async function analyzeAdaptive(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<AdaptiveAnalysis> {
+  const isHe = context.language === 'hebrew';
+  const dur = Math.round(frameData.duration);
+  const profileType = detectProfile(understanding.primaryType);
+  const cfg = PROFILE_CONFIGS[profileType];
+  const title = isHe ? cfg.heTitle : cfg.enTitle;
+  const analysisCxt = isHe ? cfg.heContext : cfg.enContext;
+
+  const metricsList = cfg.metrics
+    .map((m, i) => `${i + 1}. key="${m.key}" | ${isHe ? m.heLabel : m.enLabel}: ${m.question}`)
+    .join('\n');
+
+  const content: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `You are performing a specialized "${title}" for a ${dur}-second video.
+
+DETECTED TYPE: ${understanding.primaryType}
+CREATOR INTENT: ${understanding.creatorIntent}
+VIEWER IMPRESSION: ${understanding.viewerFirstImpression}
+
+ANALYST MINDSET: ${analysisCxt}
+
+Study the ${frameData.frames.length} frames carefully. Evaluate ONLY these 6 metrics — chosen specifically for ${understanding.primaryType} content:
+
+${metricsList}
+
+${isHe ? `MANDATORY HEBREW RULES — write like a person, NOT a report:
+
+❌ WRONG: "רמת ה-CTA גבוהה מספיק ומייצרת המרה"
+✅ RIGHT: "ה-CTA ברור — הצופה יודע בדיוק מה לעשות"
+
+❌ WRONG: "קיימת בעיה משמעותית באותנטיות"
+✅ RIGHT: "זה נשמע מבוים — לא מאמין שזה ספונטני"
+
+❌ WRONG: "פוטנציאל הוויראליות נמוך כתוצאה מחוסר ב-replay value"
+✅ RIGHT: "אין שום סיבה לצפות פעמיים — נגמר ועבר"
+
+Write ALL text fields in simple, punchy Israeli Hebrew.` : `Write ALL text fields in direct, honest English. Short sentences.`}
+
+Also provide (in ${isHe ? 'Hebrew' : 'English'}):
+- topStrengths: exactly 2-3 things this video does SPECIFICALLY WELL for "${title}"
+- criticalFixes: exactly 2-3 most important changes for "${title}" success
+- verdict: ONE honest sentence — how effective is this as ${understanding.primaryType} content?
+
+Return ONLY valid JSON:
+{
+  "metrics": [
+    { "key": "<exact key from above>", "label": "<${isHe ? 'Hebrew' : 'English'} label>", "score": <0-100>, "explanation": "<one punchy sentence>" }
+  ],
+  "topStrengths": ["<strength 1>", "<strength 2>"],
+  "criticalFixes": ["<fix 1>", "<fix 2>"],
+  "verdict": "<one sentence>"
+}`,
+    },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'low' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a specialized video analyst performing a "${title}". You go deep on the specific criteria that matter for this content type — not general analysis. ${isHe ? 'Write in simple, punchy Israeli Hebrew.' : 'Write in honest, direct English.'} Respond ONLY with valid JSON.`,
+      },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.35,
+    seed: 42,
+    max_tokens: 1000,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+  const clamp = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
+
+  const metrics: AdaptiveMetric[] = Array.isArray(raw.metrics)
+    ? raw.metrics.slice(0, 6).map((m: Record<string, unknown>) => ({
+        key: String(m.key || ''),
+        label: String(m.label || ''),
+        score: clamp(m.score),
+        explanation: String(m.explanation || ''),
+      }))
+    : [];
+
+  return {
+    profileType,
+    metrics,
+    topStrengths: Array.isArray(raw.topStrengths) ? raw.topStrengths.slice(0, 3).map(String) : [],
+    criticalFixes: Array.isArray(raw.criticalFixes) ? raw.criticalFixes.slice(0, 3).map(String) : [],
+    verdict: String(raw.verdict || ''),
   };
 }
 

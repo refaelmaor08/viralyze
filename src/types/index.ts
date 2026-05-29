@@ -153,6 +153,31 @@ export interface VideoFrameData {
   height: number;
 }
 
+// ─── Adaptive Analysis Engine (Stage 5) ───────────────────────────────────────
+
+export type AnalysisProfileType =
+  | 'conversion'
+  | 'authenticity'
+  | 'virality'
+  | 'connection'
+  | 'value'
+  | 'aesthetic';
+
+export interface AdaptiveMetric {
+  key: string;
+  label: string;
+  score: number;
+  explanation: string;
+}
+
+export interface AdaptiveAnalysis {
+  profileType: AnalysisProfileType;
+  metrics: AdaptiveMetric[];
+  topStrengths: string[];
+  criticalFixes: string[];
+  verdict: string;
+}
+
 // ─── Timeline Analysis Engine (Stage 4) ───────────────────────────────────────
 
 export type MomentQuality = 'strong' | 'good' | 'neutral' | 'weak' | 'critical';

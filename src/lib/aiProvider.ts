@@ -19,6 +19,7 @@ import type {
   PerceptionGap,
   ViewerPsychology,
   TimelineAnalysis,
+  AdaptiveAnalysis,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -971,6 +972,74 @@ const DEMO_PERCEPTION_GAPS_EN: PerceptionGap[] = [
   },
 ];
 
+// ─── Demo adaptive analysis scenarios ─────────────────────────────────────────
+
+const DEMO_ADAPTIVE_HE: AdaptiveAnalysis[] = [
+  {
+    profileType: 'conversion',
+    metrics: [
+      { key: 'cta',            label: 'כוח ה-CTA',       score: 43, explanation: 'ה-CTA קיים אבל לא בולט — הצופה לא בטוח מה בדיוק לעשות' },
+      { key: 'persuasion',     label: 'כוח שכנוע',       score: 61, explanation: 'יש שכנוע, אבל הוא עובד לאט מדי לפרסומת' },
+      { key: 'productClarity', label: 'בהירות המוצר',    score: 72, explanation: 'מבין מה מוכרים, אבל לא ברור מה המחיר או איפה לקנות' },
+      { key: 'urgency',        label: 'תחושת דחיפות',    score: 28, explanation: 'אין שום סיבה לפעול עכשיו — אפשר לחזור לזה מחר' },
+      { key: 'trustSignals',   label: 'אותות אמינות',    score: 55, explanation: 'נראה סביר, אבל אין הוכחות, ביקורות, או מספרים אמיתיים' },
+      { key: 'purchaseIntent', label: 'כוונת רכישה',     score: 35, explanation: 'הצופה לא נדחף מספיק לפעולה' },
+    ],
+    topStrengths: ['המוצר ברור מבחינה ויזואלית', 'איכות הצילום מוסיפה אמינות', 'הפתיחה עוצרת את הפריים'],
+    criticalFixes: [
+      'הוסף CTA ספציפי עם דחיפות — "הזמן היום ב-20% הנחה, רק עד חצות"',
+      'הוסף הוכחה חברתית: מספר לקוחות, ביקורת אמיתית, או תוצאה ספציפית',
+      'קצר את הזמן עד ה-CTA — הוא מגיע מאוחר מדי',
+    ],
+    verdict: 'פרסומת עם פוטנציאל שחסרות לה דחיפות ו-CTA חזק — הצופה מבין את המוצר אבל לא נדחף לפעול',
+  },
+  {
+    profileType: 'virality',
+    metrics: [
+      { key: 'scrollStopping', label: 'עצירת גלילה',     score: 71, explanation: 'הפריים הראשון עצר — יש כאן משהו שונה ממה שציפיתי' },
+      { key: 'trendAlignment', label: 'התאמה לטרנד',     score: 63, explanation: 'מרגיש עדכני, אבל לא מיושר לטרנד ספציפי שרץ עכשיו' },
+      { key: 'replayValue',    label: 'ערך צפייה חוזרת', score: 38, explanation: 'אין שום סיבה לצפות פעמיים — נגמר ועבר' },
+      { key: 'addictiveness',  label: 'ממכריות',          score: 52, explanation: 'כמה רגעים מחזיקים, אבל אין "דופמין" אמיתי שמושך קדימה' },
+      { key: 'sharingTrigger', label: 'טריגר שיתוף',     score: 41, explanation: 'לא הרגשתי שחייב לשלוח את זה לאף אחד' },
+      { key: 'memorability',   label: 'זכירות',           score: 46, explanation: 'שעה אחר כך — לא בטוח שיזכרו שראו את זה' },
+    ],
+    topStrengths: ['הפתיחה עוצרת גלילה', 'הקצב מתאים לפלטפורמה', 'הוויזואל נקי ומסקרן'],
+    criticalFixes: [
+      'בנה רגע "גילוי" שמביא לצפייה חוזרת — משהו שמשתנה כשמבינים אותו',
+      'הוסף אלמנט שמניע לשיתוף: twist בסוף, ציטוט שמחרה, או רגע מפתיע',
+      'חדד לדבר אחד ספציפי — תוכן שמנסה לתפוס הכל לא נזכר',
+    ],
+    verdict: 'סרטון עם פתיחה טובה שמפסיד ויראליות בגלל חוסר ב-replay value ו-sharing trigger',
+  },
+];
+
+const DEMO_ADAPTIVE_EN: AdaptiveAnalysis[] = [
+  {
+    profileType: 'authenticity',
+    metrics: [
+      { key: 'naturalness',  label: 'Naturalness',     score: 49, explanation: "Feels slightly rehearsed — like they knew exactly what they'd say before filming" },
+      { key: 'trustFactor',  label: 'Trust Factor',    score: 61, explanation: "Seems like a real person, but the setup feels a bit too clean" },
+      { key: 'realism',      label: 'Realism',         score: 57, explanation: "The environment is a bit too arranged — real life is messier than this" },
+      { key: 'relatability', label: 'Relatability',    score: 64, explanation: "The situation is relatable, even if the delivery feels polished" },
+      { key: 'credibility',  label: 'Credibility',     score: 53, explanation: "Hard to tell if this is a real user or a paid creator" },
+      { key: 'socialProof',  label: 'Social Proof',    score: 40, explanation: "No real-world validation — no numbers, no receipts, no reactions from others" },
+    ],
+    topStrengths: ['Relatable scenario', 'Decent on-camera presence', 'Clear message'],
+    criticalFixes: [
+      'Add real social proof — numbers, receipts, or reactions from actual users',
+      'Make the environment messier and more natural — the setup looks too staged',
+      'Drop the scripted delivery — start mid-sentence, mid-action, mid-life',
+    ],
+    verdict: 'UGC that tries to feel real but comes across as slightly staged — experienced viewers will notice',
+  },
+];
+
+async function getDemoAdaptive(language: string): Promise<AdaptiveAnalysis> {
+  await new Promise((r) => setTimeout(r, 1500 + Math.random() * 800));
+  const pool = language === 'english' ? DEMO_ADAPTIVE_EN : DEMO_ADAPTIVE_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ─── Demo timeline scenarios ───────────────────────────────────────────────────
 
 const DEMO_TIMELINES_HE: TimelineAnalysis[] = [
@@ -1129,6 +1198,18 @@ export async function analyzeVideo(
   // Default: OpenAI
   const { analyzeVideo: openaiAnalyze } = await import('./openai');
   return openaiAnalyze(frameData, context);
+}
+
+export async function analyzeAdaptive(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<AdaptiveAnalysis> {
+  if (AI_MODE === 'demo') {
+    return getDemoAdaptive(context.language);
+  }
+  const { analyzeAdaptive: openaiAdaptive } = await import('./openai');
+  return openaiAdaptive(frameData, context, understanding);
 }
 
 export async function analyzeTimeline(
