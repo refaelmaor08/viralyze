@@ -117,6 +117,27 @@ export interface VideoUnderstanding {
   confidence: number;
 }
 
+// ─── Perception Gap Engine (Stage 2) ──────────────────────────────────────────
+
+export type MismatchSeverity = 'low' | 'medium' | 'high';
+
+export interface GapItem {
+  aspect: string;
+  creatorThought: string;
+  viewerFeels: string;
+  severity: MismatchSeverity;
+}
+
+export interface PerceptionGap {
+  alignmentScore: number;
+  creatorView: string;
+  viewerView: string;
+  mismatchExplained: string;
+  topMismatches: GapItem[];
+  recommendation: string;
+  isAligned: boolean;
+}
+
 export interface CompetitorAnalysis {
   competitorStrengths: string[];
   psychologicalTriggers: string[];

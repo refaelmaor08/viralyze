@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -286,6 +286,136 @@ For "timeline": provide 6-12 timestamp entries spread across the video duration.
 - "critical" = likely viewer exit point or major problem
 
 Be BRUTALLY HONEST. Reference specific visual observations from the frames. No generic advice.`;
+}
+
+export async function analyzePerceptionGap(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<PerceptionGap> {
+  const isHe = context.language === 'hebrew';
+  const dur = Math.round(frameData.duration);
+
+  const creatorTypeStr = context.contentType
+    ? (contentTypeLabels[context.contentType] ?? context.contentType)
+    : 'לא צוין';
+
+  const creatorGoalsStr = context.goals?.length
+    ? context.goals.map((g) => goalLabels[g] || g).join(', ')
+    : 'לא צוין';
+
+  const platformStr = (context.platforms ?? [])
+    .map((p) => platformLabels[p] ?? p)
+    .join(', ') || 'לא צוין';
+
+  const content: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `You are analyzing the gap between creator intent and viewer perception for a ${dur}-second video.
+
+WHAT THE CREATOR THINKS THEY MADE:
+- Content type: ${creatorTypeStr}
+- Goals: ${creatorGoalsStr}
+- Platform: ${platformStr}
+${context.niche ? `- Niche: ${context.niche}` : ''}
+
+WHAT AI DETECTED (how viewers will actually experience this):
+- Detected type: ${understanding.primaryType} (secondary: ${understanding.secondaryType})
+- Creator's real intent: ${understanding.creatorIntent}
+- Viewer first impression: ${understanding.viewerFirstImpression}
+
+VIDEO FRAMES: Study them to understand WHY any gap exists visually.
+
+YOUR TASK:
+Find the gap between what the creator THOUGHT they made and what viewers will ACTUALLY feel.
+Be honest. Be specific. Reference what you see in the frames.
+
+${isHe ? `HEBREW RULES — MUST FOLLOW:
+Write like a content director talking frankly with a creator. Simple, direct, human.
+
+❌ NEVER: "קיים פער משמעותי בין כוונת היוצר לתפיסת הצופה"
+✅ ALWAYS: "ניסית לעשות UGC, אבל זה נראה כמו פרסומת מאולתרת"
+
+❌ NEVER: "מומלץ לבצע התאמה בין האלמנטים הויזואליים"
+✅ ALWAYS: "תצלם בסביבה יותר טבעית, פחות מוכנה"
+
+❌ NEVER: "הצופה אינו מזדהה עם המסר"
+✅ ALWAYS: "הצופה לא מאמין שזה אמיתי — זה נראה מדי מוכן"
+
+Write mismatchExplained, creatorView, viewerView, and recommendation in natural Israeli Hebrew.` : 'Write in English. Be direct and honest.'}
+
+Return ONLY this JSON:
+{
+  "alignmentScore": <0-100: how well creator intent matches viewer perception>,
+  "creatorView": "<one short line: what creator thinks this content is — in ${isHe ? 'Hebrew' : 'English'}>",
+  "viewerView": "<one short line: what viewers actually feel — in ${isHe ? 'Hebrew' : 'English'}>",
+  "mismatchExplained": "<2-3 sentences in simple ${isHe ? 'Hebrew' : 'English'} explaining the main gap and why it happens visually>",
+  "topMismatches": [
+    {
+      "aspect": "<one word in ${isHe ? 'Hebrew' : 'English'}: e.g. ${isHe ? 'טון, פורמט, מסר, אנרגיה, אמינות, סגנון' : 'tone, format, message, energy, authenticity, style'}>",
+      "creatorThought": "<short phrase in ${isHe ? 'Hebrew' : 'English'}>",
+      "viewerFeels": "<short phrase in ${isHe ? 'Hebrew' : 'English'}>",
+      "severity": "high|medium|low"
+    }
+  ],
+  "recommendation": "<one actionable sentence in ${isHe ? 'simple Hebrew' : 'English'}: the single most important thing to change>",
+  "isAligned": <true if alignmentScore >= 75>
+}
+
+Rules for topMismatches:
+- If alignmentScore >= 75: 0-1 items max (or empty array)
+- If alignmentScore 50-74: 2-3 items
+- If alignmentScore < 50: 3-4 items
+- Each item must reference something visible in the frames`,
+    },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'low' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are an expert at identifying the gap between creator intent and viewer perception in short-form video content. You analyze frames visually and compare them to stated creator intent. You are honest, direct, and write in simple human language. Respond ONLY with valid JSON.`,
+      },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.35,
+    seed: 42,
+    max_tokens: 800,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  const sanitizeSeverity = (v: unknown): GapItem['severity'] =>
+    v === 'high' || v === 'medium' || v === 'low' ? v : 'medium';
+
+  const topMismatches: GapItem[] = Array.isArray(raw.topMismatches)
+    ? raw.topMismatches.slice(0, 4).map((item: Record<string, unknown>) => ({
+        aspect: String(item.aspect || ''),
+        creatorThought: String(item.creatorThought || ''),
+        viewerFeels: String(item.viewerFeels || ''),
+        severity: sanitizeSeverity(item.severity),
+      }))
+    : [];
+
+  const alignmentScore = Math.max(0, Math.min(100, Math.round(Number(raw.alignmentScore) || 70)));
+
+  return {
+    alignmentScore,
+    creatorView: String(raw.creatorView || ''),
+    viewerView: String(raw.viewerView || ''),
+    mismatchExplained: String(raw.mismatchExplained || ''),
+    topMismatches,
+    recommendation: String(raw.recommendation || ''),
+    isAligned: alignmentScore >= 75,
+  };
 }
 
 export async function analyzeVideo(

@@ -16,6 +16,7 @@ import type {
   SimpleVideoContext,
   VideoFrameData,
   VideoUnderstanding,
+  PerceptionGap,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -903,6 +904,77 @@ async function getDemoUnderstanding(language: string): Promise<VideoUnderstandin
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// ─── Demo perception gap scenarios ────────────────────────────────────────────
+
+const DEMO_PERCEPTION_GAPS_HE: PerceptionGap[] = [
+  {
+    alignmentScore: 38,
+    creatorView: 'UGC אותנטי ואמיתי שנראה ספונטני',
+    viewerView: 'פרסומת מאולתרת שמנסה להיראות אמיתית',
+    mismatchExplained: 'ניסית לעשות UGC שנראה ספונטני, אבל הצילומים מסודרים מדי, התאורה מקצועית מדי, וכל פריים נראה "מוכן". הצופה מרגיש שמישהו שם מאמץ כדי להיראות כאילו לא שם מאמץ — וזה מה שהורג את האמינות.',
+    topMismatches: [
+      { aspect: 'אמינות', creatorThought: 'נראה אמיתי וספונטני', viewerFeels: 'נראה מוכן ומבוים', severity: 'high' },
+      { aspect: 'טון', creatorThought: 'חבר שממליץ', viewerFeels: 'מוכר שמשכנע', severity: 'high' },
+      { aspect: 'סביבה', creatorThought: 'טבעי ויומיומי', viewerFeels: 'סטאגד ומאורגן', severity: 'medium' },
+    ],
+    recommendation: 'צלם מחדש עם טלפון רגיל, ללא תאורה מיוחדת, ובמקום שבאמת נמצאים בו — לא "סביבה נכונה"',
+    isAligned: false,
+  },
+  {
+    alignmentScore: 72,
+    creatorView: 'תוכן TikTok אורגני על חיי היומיום',
+    viewerView: 'סרטון סיפור אישי עם גישה אמיתית',
+    mismatchExplained: 'הסרטון קרוב למה שרצית לעשות, אבל הפתיחה נראית קצת מוכנה ביחס לשאר. הצופה נכנס לסרטון ומרגיש "וואו, סיפור" — אבל לוקח לו 4 שניות להבין שזה אורגני ולא מאורגן.',
+    topMismatches: [
+      { aspect: 'פתיחה', creatorThought: 'טבעית ומיידית', viewerFeels: 'קצת ממוסגרת', severity: 'medium' },
+    ],
+    recommendation: 'קצר את הפתיחה ב-2-3 שניות — תתחיל ישירות בתוך הרגע, לא לפניו',
+    isAligned: false,
+  },
+  {
+    alignmentScore: 86,
+    creatorView: 'פרסומת מוצר ברורה עם CTA חזק',
+    viewerView: 'פרסומת איכותית שנראית כמו תוכן אמיתי',
+    mismatchExplained: 'הפרסומת עובדת כמו שצריך — הצופה מבין שזה פרסומת אבל לא מרגיש שהיא "דוחפת" אותו. הטון טבעי מספיק שהצופה נשאר, ומספיק ברור שהוא יודע מה אתה רוצה שיעשה.',
+    topMismatches: [],
+    recommendation: 'הוסף תגובה רגשית ספציפית אחת יותר לפני ה-CTA — "זה שינה לי את..." — ואז בקש',
+    isAligned: true,
+  },
+];
+
+const DEMO_PERCEPTION_GAPS_EN: PerceptionGap[] = [
+  {
+    alignmentScore: 38,
+    creatorView: 'Authentic UGC that looks spontaneous',
+    viewerView: 'A forced ad trying to look organic',
+    mismatchExplained: "You tried to make UGC that looks spontaneous, but the shots are too composed, the lighting too professional, and every frame looks 'planned'. Viewers can feel someone tried hard to look effortless — and that's exactly what kills authenticity.",
+    topMismatches: [
+      { aspect: 'authenticity', creatorThought: 'Looks real and spontaneous', viewerFeels: 'Looks staged and prepared', severity: 'high' },
+      { aspect: 'tone', creatorThought: 'A friend recommending', viewerFeels: 'A salesperson persuading', severity: 'high' },
+      { aspect: 'environment', creatorThought: 'Natural and everyday', viewerFeels: 'Staged and organized', severity: 'medium' },
+    ],
+    recommendation: 'Reshoot with a regular phone, no special lighting, in a place where you actually are — not a "right environment"',
+    isAligned: false,
+  },
+  {
+    alignmentScore: 82,
+    creatorView: 'Organic TikTok content about daily life',
+    viewerView: 'A personal story with a genuine approach',
+    mismatchExplained: "The video is close to what you wanted, but the opening looks a bit planned compared to the rest. Viewers enter and feel 'wow, a story' — but it takes them 4 seconds to understand it's organic and not staged.",
+    topMismatches: [
+      { aspect: 'opening', creatorThought: 'Natural and immediate', viewerFeels: 'Slightly framed', severity: 'medium' },
+    ],
+    recommendation: 'Cut the opening by 2-3 seconds — start directly inside the moment, not before it',
+    isAligned: true,
+  },
+];
+
+async function getDemoPerception(language: string): Promise<PerceptionGap> {
+  await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
+  const pool = language === 'english' ? DEMO_PERCEPTION_GAPS_EN : DEMO_PERCEPTION_GAPS_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 export async function understandVideo(
   frameData: VideoFrameData,
   language: string
@@ -912,6 +984,18 @@ export async function understandVideo(
   }
   const { understandVideo: openaiUnderstand } = await import('./openai');
   return openaiUnderstand(frameData, language);
+}
+
+export async function analyzePerceptionGap(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding
+): Promise<PerceptionGap> {
+  if (AI_MODE === 'demo') {
+    return getDemoPerception(context.language);
+  }
+  const { analyzePerceptionGap: openaiPerception } = await import('./openai');
+  return openaiPerception(frameData, context, understanding);
 }
 
 export async function analyzeVideo(

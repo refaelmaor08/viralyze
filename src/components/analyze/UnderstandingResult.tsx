@@ -211,7 +211,7 @@ export default function UnderstandingResult({ understanding, onContinue }: Props
           }}
         >
           <Zap className="w-5 h-5 fill-black" />
-          התחל ניתוח מלא
+          המשך לשלב הבא
           <ChevronLeft className="w-4 h-4" />
         </motion.button>
 
