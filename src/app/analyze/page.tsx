@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData, VideoUnderstanding } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/authContext';
 import { incrementAnalyses } from '@/lib/analyses';
 import { formatDurationLimit } from '@/lib/plans';
 import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
+import UnderstandingResult from '@/components/analyze/UnderstandingResult';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
@@ -21,7 +22,7 @@ const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader')
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
 const AnalysisHistory = dynamic(() => import('@/components/analyze/AnalysisHistory'), { ssr: false });
 
-type Phase = 'preanalysis' | 'form' | 'analyzing' | 'error';
+type Phase = 'preanalysis' | 'form' | 'understanding' | 'understood' | 'analyzing' | 'error';
 
 function AnalyzeContent() {
   const router = useRouter();
@@ -37,6 +38,7 @@ function AnalyzeContent() {
     language: 'hebrew',
     platforms: ['instagram'],
   });
+  const [understanding, setUnderstanding] = useState<VideoUnderstanding | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { user, plan, remainingAnalyses } = useAuth();
@@ -188,8 +190,8 @@ function AnalyzeContent() {
 
   const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && remainingAnalyses > 0;
 
-  const handleAnalyze = async () => {
-    if (!canAnalyze) return;
+  // Stage 2: full deep analysis
+  const runFullAnalysis = useCallback(async () => {
     setPhase('analyzing');
     setError('');
 
@@ -207,15 +209,9 @@ function AnalyzeContent() {
         saveFullResult(result.id, result, { language: context.language });
         if (user) incrementAnalyses(user.email, plan.isLifetimeLimit);
         saveToHistory(
-          {
-            id: result.id,
-            date: Date.now(),
-            fileName: file.name,
-            thumbnailUrl,
-            viralScore: result.scores.viralPotential,
-            hookScore: result.scores.hookStrength,
-            platform: (context.platforms ?? ['instagram'])[0],
-          },
+          { id: result.id, date: Date.now(), fileName: file!.name, thumbnailUrl,
+            viralScore: result.scores.viralPotential, hookScore: result.scores.hookStrength,
+            platform: (context.platforms ?? ['instagram'])[0] },
           user?.email,
         );
         router.push(`/results/${result.id}`);
@@ -251,15 +247,9 @@ function AnalyzeContent() {
       saveFullResult(result.id, result, { language: context.language });
       if (user) incrementAnalyses(user.email, plan.isLifetimeLimit);
       saveToHistory(
-        {
-          id: result.id,
-          date: Date.now(),
-          fileName: file.name,
-          thumbnailUrl,
-          viralScore: result.scores.viralPotential,
-          hookScore: result.scores.hookStrength,
-          platform: (context.platforms ?? ['instagram'])[0],
-        },
+        { id: result.id, date: Date.now(), fileName: file!.name, thumbnailUrl,
+          viralScore: result.scores.viralPotential, hookScore: result.scores.hookStrength,
+          platform: (context.platforms ?? ['instagram'])[0] },
         user?.email,
       );
       router.push(`/results/${result.id}`);
@@ -267,6 +257,42 @@ function AnalyzeContent() {
       const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה';
       setError(msg);
       setPhase('error');
+    }
+  }, [context, file, frameDataRef, thumbnailUrl, user, plan, router]);
+
+  // Stage 1: video understanding, then show result before Stage 2
+  const handleAnalyze = async () => {
+    if (!canAnalyze) return;
+    setError('');
+
+    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
+
+    // Skip understanding in demo mode or if no frames
+    if (IS_DEMO || !frameData.frames.length) {
+      await runFullAnalysis();
+      return;
+    }
+
+    setPhase('understanding');
+
+    try {
+      const res = await fetch('/api/understand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frameData, language: context.language || 'hebrew' }),
+      });
+
+      if (res.ok) {
+        const data: VideoUnderstanding = await res.json();
+        setUnderstanding(data);
+        setPhase('understood');
+      } else {
+        // Understanding failed — skip to full analysis silently
+        await runFullAnalysis();
+      }
+    } catch {
+      // Network error — skip to full analysis silently
+      await runFullAnalysis();
     }
   };
 
@@ -542,6 +568,67 @@ function AnalyzeContent() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </motion.div>
+        )}
+
+        {/* Understanding — loading state */}
+        {phase === 'understanding' && (
+          <motion.div
+            key="understanding"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
+              style={{
+                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
+                border: '1px solid rgba(212,168,67,0.25)',
+                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
+              }}
+            >
+              <span className="text-3xl">🔍</span>
+            </motion.div>
+
+            <h2 className="text-xl font-black text-white mb-2 text-center">מבין את הסרטון שלך...</h2>
+            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
+              ה-AI בוחן את הפריימים ומזהה את סוג התוכן, כוונת היוצר, והרושם שמשאיר
+            </p>
+
+            <div className="flex items-center gap-2">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: '#D4A843' }}
+                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+
+            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
+              Stage 1 · Video Understanding Engine
+            </p>
+          </motion.div>
+        )}
+
+        {/* Understood — show result */}
+        {phase === 'understood' && understanding && (
+          <motion.div
+            key="understood"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10"
+          >
+            <UnderstandingResult
+              understanding={understanding}
+              onContinue={runFullAnalysis}
+            />
           </motion.div>
         )}
 

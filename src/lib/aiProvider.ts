@@ -15,6 +15,7 @@ import type {
   CompetitorAnalysis,
   SimpleVideoContext,
   VideoFrameData,
+  VideoUnderstanding,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -877,7 +878,41 @@ async function callCustomCompetitorEndpoint(
   return res.json();
 }
 
+// ─── Demo understanding scenarios ─────────────────────────────────────────────
+
+const DEMO_UNDERSTANDING_HE: VideoUnderstanding = {
+  primaryType: 'organic-tiktok',
+  secondaryType: 'storytelling',
+  creatorIntent: 'לשתף חוויה אישית שתייצר זיהוי ומעורבות בקרב הקהל',
+  viewerFirstImpression: 'נראה כמו תוכן אותנטי ואישי שעשוי להיות מעניין',
+  confidence: 82,
+};
+
+const DEMO_UNDERSTANDING_EN: VideoUnderstanding = {
+  primaryType: 'organic-tiktok',
+  secondaryType: 'storytelling',
+  creatorIntent: 'Share a personal experience to create audience recognition and engagement',
+  viewerFirstImpression: 'Looks like authentic, personal content that might be interesting',
+  confidence: 82,
+};
+
+async function getDemoUnderstanding(language: string): Promise<VideoUnderstanding> {
+  await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+  return language === 'english' ? DEMO_UNDERSTANDING_EN : DEMO_UNDERSTANDING_HE;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+export async function understandVideo(
+  frameData: VideoFrameData,
+  language: string
+): Promise<VideoUnderstanding> {
+  if (AI_MODE === 'demo') {
+    return getDemoUnderstanding(language);
+  }
+  const { understandVideo: openaiUnderstand } = await import('./openai');
+  return openaiUnderstand(frameData, language);
+}
 
 export async function analyzeVideo(
   frameData: VideoFrameData,

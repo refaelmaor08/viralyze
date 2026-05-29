@@ -91,6 +91,32 @@ export interface AnalysisResult {
   timeline?: TimelineEntry[];
 }
 
+// ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────
+
+export type ContentTypeDetected =
+  | 'advertisement'
+  | 'showcase'
+  | 'ugc'
+  | 'cinematic-edit'
+  | 'trend-content'
+  | 'storytelling'
+  | 'personal-branding'
+  | 'educational'
+  | 'emotional'
+  | 'organic-tiktok'
+  | 'luxury-branding'
+  | 'tutorial'
+  | 'entertainment'
+  | 'review';
+
+export interface VideoUnderstanding {
+  primaryType: ContentTypeDetected;
+  secondaryType: ContentTypeDetected;
+  creatorIntent: string;
+  viewerFirstImpression: string;
+  confidence: number;
+}
+
 export interface CompetitorAnalysis {
   competitorStrengths: string[];
   psychologicalTriggers: string[];

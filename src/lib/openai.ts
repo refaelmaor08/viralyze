@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -331,6 +331,93 @@ export async function analyzeVideo(
     executiveSummary: raw.executiveSummary,
     overallVerdict: raw.overallVerdict,
     createdAt: new Date().toISOString(),
+  };
+}
+
+export async function understandVideo(
+  frameData: VideoFrameData,
+  language: string
+): Promise<VideoUnderstanding> {
+  const isHe = language === 'hebrew';
+  const dur = Math.round(frameData.duration);
+
+  const content: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `You are a video content classification expert. Study these ${frameData.frames.length} extracted frames from a ${dur}-second video.
+
+YOUR ONLY TASK: understand what type of content this is. Do NOT score quality. Do NOT give suggestions.
+
+Available content types:
+advertisement, showcase, ugc, cinematic-edit, trend-content, storytelling, personal-branding, educational, emotional, organic-tiktok, luxury-branding, tutorial, entertainment, review
+
+Definitions:
+- advertisement: paid ad, product/brand promotion, CTA to buy
+- showcase: showing a product, space, or portfolio without hard sell
+- ugc: user-generated content, testimonial, authentic review
+- cinematic-edit: heavy visual effects, color grading, B-roll focused
+- trend-content: following a TikTok/Reel trend, sound, or challenge
+- storytelling: narrative arc, personal story, journey
+- personal-branding: thought leadership, expertise sharing, building personal brand
+- educational: teaching a skill, tutorial, how-to
+- emotional: vulnerability, inspiration, tear-jerker content
+- organic-tiktok: native TikTok format, casual, algorithm-native
+- luxury-branding: high-end lifestyle, aspirational, premium feel
+- tutorial: step-by-step instruction content
+- entertainment: pure entertainment, humor, skits, performance
+- review: product or experience review, opinion content
+
+Study the frames carefully and return ONLY this JSON:
+{
+  "primaryType": "<most fitting type from the list above>",
+  "secondaryType": "<second most fitting type>",
+  "creatorIntent": "<one sentence${isHe ? ' in natural Hebrew' : ' in English'}: what is this creator trying to achieve?>",
+  "viewerFirstImpression": "<one sentence${isHe ? ' in natural Hebrew' : ' in English'}: what will a viewer think/feel in the first 3 seconds?>",
+  "confidence": <integer 60-99>
+}`,
+    },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'low' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a video content classification expert. You classify video content types by studying frames. You respond ONLY with valid JSON. ${isHe ? 'Write creatorIntent and viewerFirstImpression in natural Israeli Hebrew.' : 'Write in English.'}`,
+      },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.3,
+    seed: 42,
+    max_tokens: 400,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  const VALID_TYPES: VideoUnderstanding['primaryType'][] = [
+    'advertisement', 'showcase', 'ugc', 'cinematic-edit', 'trend-content',
+    'storytelling', 'personal-branding', 'educational', 'emotional',
+    'organic-tiktok', 'luxury-branding', 'tutorial', 'entertainment', 'review',
+  ];
+
+  const sanitize = (v: unknown): VideoUnderstanding['primaryType'] =>
+    VALID_TYPES.includes(v as VideoUnderstanding['primaryType'])
+      ? (v as VideoUnderstanding['primaryType'])
+      : 'organic-tiktok';
+
+  return {
+    primaryType: sanitize(raw.primaryType),
+    secondaryType: sanitize(raw.secondaryType),
+    creatorIntent: String(raw.creatorIntent || ''),
+    viewerFirstImpression: String(raw.viewerFirstImpression || ''),
+    confidence: Math.max(60, Math.min(99, Math.round(Number(raw.confidence) || 78))),
   };
 }
 
