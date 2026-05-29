@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Zap, ChevronLeft } from 'lucide-react';
-import type { VideoUnderstanding, ContentTypeDetected } from '@/types';
+import { Zap, ChevronLeft, AlertTriangle } from 'lucide-react';
+import type { VideoUnderstanding, ContentTypeDetected, ContentType } from '@/types';
 
 // ─── Type config ──────────────────────────────────────────────────────────────
 
@@ -24,18 +24,71 @@ const TYPE_CONFIG: Record<ContentTypeDetected, { emoji: string; heLabel: string;
   'review':           { emoji: '⭐', heLabel: 'ביקורת',        color: '#facc15', bg: 'rgba(250,204,21,0.1)' },
 };
 
-const AUTO_PROCEED_SECONDS = 5;
+// ─── Content type mismatch detection ─────────────────────────────────────────
+
+const USER_TYPE_HE_LABELS: Record<ContentType, string> = {
+  'ad':             'פרסומת',
+  'organic-tiktok': 'TikTok אורגני',
+  'instagram-reel': 'Instagram Reel',
+  'ugc':            'UGC',
+  'storytelling':   'סיפור',
+  'podcast':        'פודקאסט',
+  'meme':           'מים / בידור',
+  'tutorial':       'הדרכה',
+  'personal-brand': 'מיתוג אישי',
+  'other':          'כללי',
+};
+
+// Which AI-detected types are "expected" for each user-selected type
+const EXPECTED_DETECTED: Record<ContentType, ContentTypeDetected[]> = {
+  'ad':             ['advertisement'],
+  'organic-tiktok': ['organic-tiktok', 'trend-content', 'entertainment', 'storytelling', 'emotional'],
+  'instagram-reel': ['organic-tiktok', 'trend-content', 'entertainment', 'emotional', 'storytelling'],
+  'ugc':            ['ugc', 'organic-tiktok'],
+  'storytelling':   ['storytelling', 'emotional', 'personal-branding', 'organic-tiktok'],
+  'podcast':        ['educational', 'personal-branding'],
+  'meme':           ['entertainment', 'trend-content'],
+  'tutorial':       ['tutorial', 'educational'],
+  'personal-brand': ['personal-branding', 'storytelling', 'emotional', 'organic-tiktok'],
+  'other':          ['advertisement','showcase','ugc','cinematic-edit','trend-content','storytelling',
+                     'personal-branding','educational','emotional','organic-tiktok','luxury-branding',
+                     'tutorial','entertainment','review'],
+};
+
+function getMismatchMessage(selected: ContentType, detectedLabel: string): string {
+  switch (selected) {
+    case 'ad':
+      return `בחרת פרסומת, אבל הסרטון נראה יותר כמו ${detectedLabel}. אין כאן מספיק מבנה של הצעה, מחיר, או קריאה לפעולה ישירה לרכישה. הניתוח יתבסס על מה שזוהה בפועל.`;
+    case 'ugc':
+      return `בחרת UGC, אבל הסרטון נראה יותר כמו ${detectedLabel}. UGC אמיתי מרגיש ספונטני ולא מוכן — הצילום והעריכה כאן נראים מסודרים מדי. הניתוח יתבסס על מה שזוהה.`;
+    case 'tutorial':
+      return `בחרת הדרכה, אבל הסרטון נראה יותר כמו ${detectedLabel}. אין כאן מספיק מבנה של שלבים, הדגמה, או מידע הדרכתי ברור. הניתוח יתבסס על מה שזוהה.`;
+    default:
+      return `סוג התוכן שבחרת לא תואם למה שהסרטון מרגיש בפועל — זיהינו ${detectedLabel}. הניתוח יתבסס בעיקר על הסוג שזוהה, לא על הקטגוריה שבחרת.`;
+  }
+}
+
+const AUTO_PROCEED_SECONDS = 7;
 
 interface Props {
   understanding: VideoUnderstanding;
+  userSelectedType?: ContentType;
   onContinue: () => void;
 }
 
-export default function UnderstandingResult({ understanding, onContinue }: Props) {
+export default function UnderstandingResult({ understanding, userSelectedType, onContinue }: Props) {
   const [countdown, setCountdown] = useState(AUTO_PROCEED_SECONDS);
 
   const primary = TYPE_CONFIG[understanding.primaryType] ?? TYPE_CONFIG['organic-tiktok'];
   const secondary = TYPE_CONFIG[understanding.secondaryType] ?? TYPE_CONFIG['storytelling'];
+
+  // Mismatch detection
+  const hasMismatch = userSelectedType &&
+    userSelectedType !== 'other' &&
+    !EXPECTED_DETECTED[userSelectedType].includes(understanding.primaryType);
+  const mismatchMsg = hasMismatch && userSelectedType
+    ? getMismatchMessage(userSelectedType, primary.heLabel)
+    : null;
 
   useEffect(() => {
     if (countdown <= 0) {
@@ -116,22 +169,55 @@ export default function UnderstandingResult({ understanding, onContinue }: Props
             </div>
           </motion.div>
 
-          {/* Secondary type */}
+          {/* Secondary type + user-selected comparison */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="flex items-center justify-center gap-2"
+            className="space-y-2"
           >
-            <span className="text-white/25 text-xs">סוג משני</span>
-            <div
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
-              style={{ background: secondary.bg, color: secondary.color, border: `1px solid ${secondary.color}30` }}
-            >
-              <span>{secondary.emoji}</span>
-              <span>{secondary.heLabel}</span>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-white/25 text-xs">סוג משני שזוהה</span>
+              <div
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
+                style={{ background: secondary.bg, color: secondary.color, border: `1px solid ${secondary.color}30` }}
+              >
+                <span>{secondary.emoji}</span>
+                <span>{secondary.heLabel}</span>
+              </div>
             </div>
+
+            {/* User selected type row */}
+            {userSelectedType && (
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-white/25 text-xs">בחרת</span>
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
+                  style={{
+                    background: hasMismatch ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.05)',
+                    color: hasMismatch ? '#f97316' : 'rgba(255,255,255,0.45)',
+                    border: hasMismatch ? '1px solid rgba(249,115,22,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  {USER_TYPE_HE_LABELS[userSelectedType]}
+                </div>
+              </div>
+            )}
           </motion.div>
+
+          {/* Mismatch warning */}
+          {mismatchMsg && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.38, type: 'spring', stiffness: 260, damping: 22 }}
+              className="rounded-2xl p-4 text-right flex gap-3"
+              style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.25)' }}
+            >
+              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-orange-300/90 leading-relaxed">{mismatchMsg}</p>
+            </motion.div>
+          )}
 
           {/* Divider */}
           <div className="h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />

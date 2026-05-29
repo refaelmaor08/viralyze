@@ -94,10 +94,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserState(getUser());
   }, []);
 
+  const UNLIMITED = process.env.NEXT_PUBLIC_UNLIMITED_TEST_MODE === 'true';
+
   const planId: PlanId = user?.plan ?? 'free';
-  const plan = getPlan(planId);
-  const usedAnalyses = user ? getUsedAnalyses(user.email, plan.isLifetimeLimit) : 0;
-  const remainingAnalyses = Math.max(0, plan.monthlyAnalyses - usedAnalyses);
+  const basePlan = getPlan(planId);
+  // In unlimited test mode: give unlimited duration + analyses so no UI blockers appear
+  const plan = UNLIMITED
+    ? { ...basePlan, maxDurationSec: 600, monthlyAnalyses: 9999 }
+    : basePlan;
+  const usedAnalyses = (UNLIMITED || !user) ? 0 : getUsedAnalyses(user.email, plan.isLifetimeLimit);
+  const remainingAnalyses = UNLIMITED ? 9999 : Math.max(0, plan.monthlyAnalyses - usedAnalyses);
 
   return (
     <AuthContext.Provider value={{ user, supabaseUser, loading, plan, usedAnalyses, remainingAnalyses, signOut, refresh }}>

@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData, VideoUnderstanding, PerceptionGap, ViewerPsychology, TimelineAnalysis, AdaptiveAnalysis, Recommendations } from '@/types';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData, VideoUnderstanding, PerceptionGap, ViewerPsychology, TimelineAnalysis, AdaptiveAnalysis, Recommendations, LanguageSafetyAnalysis } from '@/types';
 import AIScanner from '@/components/analyze/AIScanner';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
 import { incrementAnalyses } from '@/lib/analyses';
 import { formatDurationLimit } from '@/lib/plans';
+import { getVideoFingerprint, getCachedResult, setCachedResult } from '@/lib/videoCache';
 import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
 import UnderstandingResult from '@/components/analyze/UnderstandingResult';
 import PerceptionGapResult from '@/components/analyze/PerceptionGapResult';
@@ -20,14 +21,17 @@ import ViewerPsychologyResult from '@/components/analyze/ViewerPsychologyResult'
 import TimelineResult from '@/components/analyze/TimelineResult';
 import AdaptiveAnalysisResult from '@/components/analyze/AdaptiveAnalysisResult';
 import RecommendationsResult from '@/components/analyze/RecommendationsResult';
+import LanguageSafetyGate from '@/components/analyze/LanguageSafetyGate';
+import LanguageSafetyResult from '@/components/analyze/LanguageSafetyResult';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
+const IS_UNLIMITED = process.env.NEXT_PUBLIC_UNLIMITED_TEST_MODE === 'true';
 
 const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader'), { ssr: false });
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
 const AnalysisHistory = dynamic(() => import('@/components/analyze/AnalysisHistory'), { ssr: false });
 
-type Phase = 'preanalysis' | 'form' | 'understanding' | 'understood' | 'perception' | 'perceived' | 'psychology' | 'psychologized' | 'timeline' | 'timelined' | 'adaptive' | 'adapted' | 'recommending' | 'recommended' | 'analyzing' | 'error';
+type Phase = 'preanalysis' | 'form' | 'understanding' | 'understood' | 'perception' | 'perceived' | 'psychology' | 'psychologized' | 'timeline' | 'timelined' | 'adaptive' | 'adapted' | 'recommending' | 'recommended' | 'lang-gate' | 'lang-checking' | 'lang-checked' | 'analyzing' | 'error';
 
 function AnalyzeContent() {
   const router = useRouter();
@@ -49,7 +53,9 @@ function AnalyzeContent() {
   const [timelineAnalysis, setTimelineAnalysis] = useState<TimelineAnalysis | null>(null);
   const [adaptiveAnalysis, setAdaptiveAnalysis] = useState<AdaptiveAnalysis | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendations | null>(null);
+  const [languageSafety, setLanguageSafety] = useState<LanguageSafetyAnalysis | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoFingerprintRef = useRef<string | null>(null);
 
   const { user, plan, remainingAnalyses } = useAuth();
   const isPaid = plan.id !== 'free';
@@ -166,11 +172,17 @@ function AnalyzeContent() {
       setFramesReady(false);
       setDurationError('');
 
-      const ok = await checkDuration(selectedFile);
-      if (!ok) {
-        setFramesReady(true);
-        generateThumbnail(selectedFile);
-        return;
+      // Compute and store fingerprint for this file
+      videoFingerprintRef.current = getVideoFingerprint(selectedFile);
+
+      // Skip duration check in unlimited test mode
+      if (!IS_UNLIMITED) {
+        const ok = await checkDuration(selectedFile);
+        if (!ok) {
+          setFramesReady(true);
+          generateThumbnail(selectedFile);
+          return;
+        }
       }
 
       if (IS_DEMO) {
@@ -198,7 +210,7 @@ function AnalyzeContent() {
     setDurationError('');
   }, [clearSafetyTimer]);
 
-  const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && remainingAnalyses > 0;
+  const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && (IS_UNLIMITED || remainingAnalyses > 0);
 
   // Stage 2: full deep analysis
   const runFullAnalysis = useCallback(async () => {
@@ -206,6 +218,18 @@ function AnalyzeContent() {
     setError('');
 
     try {
+      // ── Cache hit: same video already analysed this session ──
+      const fingerprint = videoFingerprintRef.current;
+      if (fingerprint && !IS_DEMO) {
+        const cached = getCachedResult(fingerprint);
+        if (cached) {
+          sessionStorage.setItem('viralyze_result', JSON.stringify(cached));
+          sessionStorage.setItem('viralyze_context', JSON.stringify(context));
+          router.push(`/results/${cached.id}`);
+          return;
+        }
+      }
+
       if (IS_DEMO) {
         const { getDemoResult } = await import('@/lib/demoResults');
         const result = await getDemoResult({
@@ -252,6 +276,10 @@ function AnalyzeContent() {
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       const result = data as AnalysisResult;
+
+      // Cache result for this fingerprint so same video reuses same scores
+      if (fingerprint) setCachedResult(fingerprint, result);
+
       sessionStorage.setItem('viralyze_result', JSON.stringify(result));
       sessionStorage.setItem('viralyze_context', JSON.stringify(context));
       saveFullResult(result.id, result, { language: context.language });
@@ -404,6 +432,44 @@ function AnalyzeContent() {
     }
   }, [context, frameDataRef, understanding, perceptionGap, viewerPsychology, timelineAnalysis, adaptiveAnalysis, runFullAnalysis]);
 
+  // Optional language safety gate — shown after recommendations (or in demo mode after form)
+  const handleLangGate = useCallback(() => {
+    setPhase('lang-gate');
+  }, []);
+
+  const handleLanguageCheck = useCallback(async (transcript: string) => {
+    setPhase('lang-checking');
+    try {
+      const res = await fetch('/api/language-safety', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          context: {
+            platforms: context.platforms ?? ['instagram'],
+            language: context.language || 'hebrew',
+            niche: context.niche,
+            goals: context.goals,
+            contentType: context.contentType,
+            editability: context.editability,
+            audienceAge: context.audienceAge,
+            audienceGender: context.audienceGender,
+          } satisfies SimpleVideoContext,
+          understanding,
+        }),
+      });
+      if (res.ok) {
+        const data: LanguageSafetyAnalysis = await res.json();
+        setLanguageSafety(data);
+        setPhase('lang-checked');
+      } else {
+        await runFullAnalysis();
+      }
+    } catch {
+      await runFullAnalysis();
+    }
+  }, [context, understanding, runFullAnalysis]);
+
   // Stage 4: timeline — called after viewer psychology result
   const handleTimeline = useCallback(async () => {
     const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
@@ -497,9 +563,9 @@ function AnalyzeContent() {
 
     const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
 
-    // Skip understanding in demo mode or if no frames
+    // Skip understanding in demo mode or if no frames — go to lang gate instead
     if (IS_DEMO || !frameData.frames.length) {
-      await runFullAnalysis();
+      handleLangGate();
       return;
     }
 
@@ -647,8 +713,8 @@ function AnalyzeContent() {
               <p className="text-white/45 text-sm">ה-AI יצפה וינתח כל פריים</p>
             </div>
 
-            {/* Usage warnings */}
-            {remainingAnalyses === 0 && (
+            {/* Usage warnings — hidden in unlimited test mode */}
+            {!IS_UNLIMITED && remainingAnalyses === 0 && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -667,7 +733,7 @@ function AnalyzeContent() {
               </motion.div>
             )}
 
-            {remainingAnalyses > 0 && remainingAnalyses <= 2 && (
+            {!IS_UNLIMITED && remainingAnalyses > 0 && remainingAnalyses <= 2 && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -783,7 +849,7 @@ function AnalyzeContent() {
                     }}
                   >
                     <Zap className="w-5 h-5 fill-current" />
-                    {remainingAnalyses === 0
+                    {!IS_UNLIMITED && remainingAnalyses === 0
                       ? 'אין ניתוחים — שדרג'
                       : durationError
                       ? 'הסרטון ארוך מדי'
@@ -857,6 +923,7 @@ function AnalyzeContent() {
           >
             <UnderstandingResult
               understanding={understanding}
+              userSelectedType={context.contentType}
               onContinue={handlePerception}
             />
           </motion.div>
@@ -1162,6 +1229,83 @@ function AnalyzeContent() {
           >
             <RecommendationsResult
               recommendations={recommendations}
+              onContinue={handleLangGate}
+            />
+          </motion.div>
+        )}
+
+        {/* Language safety gate */}
+        {phase === 'lang-gate' && (
+          <motion.div
+            key="lang-gate"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10"
+          >
+            <LanguageSafetyGate
+              onAnalyze={handleLanguageCheck}
+              onSkip={runFullAnalysis}
+            />
+          </motion.div>
+        )}
+
+        {/* Language checking — loading */}
+        {phase === 'lang-checking' && (
+          <motion.div
+            key="lang-checking"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
+              style={{
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.12), rgba(168,85,247,0.04))',
+                border: '1px solid rgba(168,85,247,0.25)',
+                boxShadow: '0 0 40px rgba(168,85,247,0.15)',
+              }}
+            >
+              <span className="text-3xl">🗣️</span>
+            </motion.div>
+
+            <h2 className="text-xl font-black text-white mb-2 text-center">מנתח את השפה בסרטון...</h2>
+            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
+              ה-AI בוחן איך המילים שבחרת משפיעות על ה-reach, האמינות, והצופה
+            </p>
+
+            <div className="flex items-center gap-2">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: '#a855f7' }}
+                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+
+            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
+              Optional · Language & Safety Layer
+            </p>
+          </motion.div>
+        )}
+
+        {/* Language checked — show result */}
+        {phase === 'lang-checked' && languageSafety && (
+          <motion.div
+            key="lang-checked"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="relative z-10"
+          >
+            <LanguageSafetyResult
+              analysis={languageSafety}
               onContinue={runFullAnalysis}
             />
           </motion.div>

@@ -21,6 +21,7 @@ import type {
   TimelineAnalysis,
   AdaptiveAnalysis,
   Recommendations,
+  LanguageSafetyAnalysis,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -1466,4 +1467,144 @@ export async function analyzeCompetitor(
 
   const { analyzeCompetitor: openaiCompetitor } = await import('./openai');
   return openaiCompetitor(competitorData, language);
+}
+
+// ─── Demo language safety scenarios ───────────────────────────────────────────
+
+const DEMO_LANGUAGE_HE: LanguageSafetyAnalysis[] = [
+  {
+    overallLevel: 'moderate',
+    helpsOrHurts: 'helps',
+    authenticityScore: 81,
+    adFriendly: false,
+    signals: [
+      {
+        category: 'slang',
+        detected: 'ביטויי רחוב ושפה יומיומית לא פורמלית',
+        effect: 'helps',
+        reachImpact: 'לא משפיע על ה-reach האורגני — אלגוריתם TikTok לא מסנן סלנג',
+        viewerReaction: 'הצופה מרגיש שמדברים אליו ולא אליו — זה בדיוק מה שגורם לאנשים לשלוח לחברים',
+        adFriendly: true,
+        platformNote: 'TikTok ו-Instagram תואמים, YouTube עשוי לסנן חלקית',
+      },
+      {
+        category: 'emotional',
+        detected: 'שפה רגשית עמוקה — תסכול, ניצחון, הזדהות',
+        effect: 'helps',
+        reachImpact: 'שפה רגשית מגדילה את זמן הצפייה ב-18-25% לפי נתוני TikTok פנימיים',
+        viewerReaction: 'הצופה מרגיש שמישהו מדבר בשמו — מגדיל תגובות ושיתופים',
+        adFriendly: true,
+      },
+      {
+        category: 'profanity',
+        detected: 'קללה קלה אחת (mild) שאינה מכוונת לאף אחד',
+        effect: 'neutral',
+        reachImpact: 'קללה בודדת לא חוסמת reach — אבל מונעת ads monetization',
+        viewerReaction: 'רוב הצופים יתעלמו — ייתכן שחלק ירגישו שזה "אמיתי יותר"',
+        adFriendly: false,
+        platformNote: 'YouTube תייתג לסכמה מוגבלת, TikTok בדרך כלל לא יחסום',
+      },
+    ],
+    platformImpacts: [
+      { platform: 'tiktok', impact: 'none', note: 'התוכן תואם לגמרי — TikTok מעודד שפה אנושית ואותנטית' },
+      { platform: 'instagram', impact: 'none', note: 'ריל תואם — הטון מתאים לפלטפורמה' },
+      { platform: 'youtube', impact: 'minor', note: 'הקללה תגרום לסכמה מוגבלת — לא לחסימה. שקול לערוך אם monetization חשוב לך' },
+    ],
+    summary: 'השפה בסרטון הזה היא נכס — לא בעיה. הסלנג והרגש שאתה משתמש בהם יוצרים חיבור אמיתי עם קהל היעד. הקללה הבודדת לא תחסום reach אבל תמנע monetization ב-YouTube אם זה רלוונטי.',
+    recommendation: 'אל תשנה שום דבר מבחינת הטון והשפה — זה עובד. אם YouTube monetization חשוב לך, שקול לערוך רק את הקללה הבודדת.',
+  },
+  {
+    overallLevel: 'strong',
+    helpsOrHurts: 'hurts',
+    authenticityScore: 52,
+    adFriendly: false,
+    signals: [
+      {
+        category: 'aggressive',
+        detected: 'השוואה אגרסיבית למתחרים עם שפה פוגעת',
+        effect: 'hurts',
+        reachImpact: 'TikTok ו-Meta מגבילים תוכן שמזכיר מותגים אחרים בצורה שלילית — reach עלול לרדת 30-40%',
+        viewerReaction: 'חלק מהצופים יסכימו, חלק ירגישו אי-נוח — יוצר מחלוקת שמגדילה תגובות אבל גם unfollows',
+        adFriendly: false,
+        platformNote: 'מפר מדיניות פרסום ב-Meta, TikTok, ו-Google Ads',
+      },
+      {
+        category: 'profanity',
+        detected: 'מספר קללות מובהקות לאורך הסרטון',
+        effect: 'hurts',
+        reachImpact: 'קללות חוזרות מורידות reach ב-TikTok ומובילות לסכמה מוגבלת ב-YouTube',
+        viewerReaction: 'אם הקהל הוא מתחת לגיל 25 זה עלול לעבוד — מעל גיל 30 רוב האנשים ירגישו אי-נוח',
+        adFriendly: false,
+      },
+      {
+        category: 'sensitive-topic',
+        detected: 'הצהרות כספיות/פיננסיות ללא disclaimer',
+        effect: 'hurts',
+        reachImpact: 'Meta ו-TikTok מגבילים תוכן פיננסי ללא גילויים מתאימים',
+        viewerReaction: 'עלול לפגוע באמינות אם הצופה הוא ספקן — "עוד אחד שמבטיח כסף"',
+        adFriendly: false,
+        platformNote: 'שקול להוסיף "זה לא ייעוץ פיננסי" בתיאור',
+      },
+    ],
+    platformImpacts: [
+      { platform: 'tiktok', impact: 'significant', note: 'קללות חוזרות + השוואה אגרסיבית = reach מוגבל. שקול לעדן את השפה' },
+      { platform: 'instagram', impact: 'moderate', note: 'Reel יעלה, אבל פרסום ממומן חסום' },
+      { platform: 'facebook', impact: 'significant', note: 'מדיניות קפדנית יותר — הגעה אורגנית תיפגע' },
+      { platform: 'youtube', impact: 'significant', note: 'סכמה מוגבלת + חסימה פוטנציאלית של monetization' },
+    ],
+    summary: 'השפה בסרטון הזה עלולה לעלות לך reach. זה לא עניין של "לא מותר" — זה עניין של ביצועים. הקללות החוזרות והשוואה אגרסיבית למתחרים הם בדיוק מה שהאלגוריתמים מחפשים כדי להגביל הפצה.',
+    recommendation: 'שקול לרכך את ההשוואה למתחרים — במקום לתקוף ישירות, דבר על מה שאתה עושה אחרת. הקללות — אם חשוב לך reach, הורד אותן. אם הקהל שלך מצפה לזה, השאר אותן עם מודעות לעלות.',
+  },
+];
+
+const DEMO_LANGUAGE_EN: LanguageSafetyAnalysis[] = [
+  {
+    overallLevel: 'mild',
+    helpsOrHurts: 'helps',
+    authenticityScore: 76,
+    adFriendly: true,
+    signals: [
+      {
+        category: 'emotional',
+        detected: 'Strong emotional language — frustration, breakthrough, relatability',
+        effect: 'helps',
+        reachImpact: 'Emotional language increases watch time by 18-25% — algorithms reward engagement',
+        viewerReaction: "Viewers feel spoken to, not at — increases shares and saves",
+        adFriendly: true,
+      },
+      {
+        category: 'authentic-expression',
+        detected: 'Informal contractions, conversational filler words',
+        effect: 'helps',
+        reachImpact: 'No reach impact — casual speech patterns perform well on TikTok and Reels',
+        viewerReaction: 'Makes content feel like a conversation, not a broadcast — increases trust',
+        adFriendly: true,
+      },
+    ],
+    platformImpacts: [
+      { platform: 'tiktok', impact: 'none', note: 'Fully compatible — TikTok rewards authentic, human language' },
+      { platform: 'instagram', impact: 'none', note: 'Reels compatible — tone fits the platform perfectly' },
+      { platform: 'youtube', impact: 'none', note: 'No restrictions — fully ad-friendly' },
+    ],
+    summary: "The language in this video is an asset. The emotional depth and conversational tone create genuine connection with your audience — exactly what drives shares and saves.",
+    recommendation: 'Keep the language exactly as it is. This is a strong, ad-friendly script that works across all platforms.',
+  },
+];
+
+async function getDemoLanguageSafety(language: string): Promise<LanguageSafetyAnalysis> {
+  await new Promise((r) => setTimeout(r, 1700 + Math.random() * 800));
+  const pool = language === 'english' ? DEMO_LANGUAGE_EN : DEMO_LANGUAGE_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+export async function analyzeLanguageSafety(
+  transcript: string,
+  context: SimpleVideoContext,
+  understanding?: VideoUnderstanding
+): Promise<LanguageSafetyAnalysis> {
+  if (AI_MODE === 'demo') {
+    return getDemoLanguageSafety(context.language);
+  }
+  const { analyzeLanguageSafety: openaiLang } = await import('./openai');
+  return openaiLang(transcript, context, understanding);
 }

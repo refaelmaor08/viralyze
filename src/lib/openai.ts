@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -386,7 +386,7 @@ Rules for topMismatches:
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.35,
+    temperature: 0.1,
     seed: 42,
     max_tokens: 800,
   });
@@ -524,7 +524,7 @@ Study the frames carefully and return ONLY this JSON:
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.3,
+    temperature: 0.1,
     seed: 42,
     max_tokens: 400,
   });
@@ -734,7 +734,7 @@ Return ONLY valid JSON:
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.35,
+    temperature: 0.1,
     seed: 42,
     max_tokens: 1000,
   });
@@ -854,7 +854,7 @@ Return ONLY valid JSON:
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.3,
+    temperature: 0.1,
     seed: 42,
     max_tokens: 1400,
   });
@@ -989,7 +989,7 @@ Return ONLY valid JSON:
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.4,
+    temperature: 0.1,
     seed: 42,
     max_tokens: 1200,
   });
@@ -1019,6 +1019,155 @@ Return ONLY valid JSON:
     whyLeave: parseStringArray(raw.whyLeave),
     authenticityExplained: String(raw.authenticityExplained || ''),
     emotionExplained: String(raw.emotionExplained || ''),
+  };
+}
+
+export async function analyzeLanguageSafety(
+  transcript: string,
+  context: SimpleVideoContext,
+  understanding?: VideoUnderstanding
+): Promise<LanguageSafetyAnalysis> {
+  const isHe = context.language === 'hebrew';
+  const platformStr = (context.platforms ?? []).map((p) => platformLabels[p] ?? p).join(', ') || 'Instagram';
+  const contentTypeStr = context.contentType ? (contentTypeLabels[context.contentType] ?? context.contentType) : 'General';
+
+  const systemMsg = `You are a platform performance strategist specializing in content language analysis. You are NOT a content moderator or censor.
+
+Your ONLY job: analyze how language in a video script affects BUSINESS PERFORMANCE on social platforms — reach, viewer trust, ad monetization, and audience reaction.
+
+CORE PHILOSOPHY:
+- Street language in authentic UGC content can INCREASE engagement and make content feel real
+- Emotional outbursts and strong reactions can trigger viral sharing
+- The same language that helps an organic TikTok video will get a paid ad BLOCKED
+- Your role is to explain WHEN language helps, WHEN it hurts, and WHY — for this specific content type and platform
+- You are NEVER judging morality — only measuring business performance impact
+
+${isHe ? 'Write ALL text fields in simple, direct, human Israeli Hebrew. Short sentences.' : 'Write ALL text fields in direct, conversational English.'}
+
+Respond ONLY with valid JSON.`;
+
+  const userMsg = `Analyze the language performance impact of this video script.
+
+CONTENT CONTEXT:
+- Type: ${understanding?.primaryType ?? contentTypeStr}
+- Creator intent: ${understanding?.creatorIntent ?? 'לא ידוע'}
+- Target platforms: ${platformStr}
+- Content style: ${contentTypeStr}
+
+SCRIPT TO ANALYZE:
+"""
+${transcript.trim().slice(0, 3000)}
+"""
+
+TASK: Identify 2-5 language signals and assess their performance impact for THIS specific content type and platform.
+
+${isHe ? `MANDATORY HEBREW RULES — write like a content strategist, NOT a robot or censor:
+
+❌ WRONG: "זוהתה שפה לא הולמת שעשויה לפגוע בחוויית המשתמש"
+✅ RIGHT: "שפה ישירה כזו מגבירה אמינות ב-UGC — הצופה מרגיש שזה אמיתי"
+
+❌ WRONG: "מומלץ להימנע משפה חריפה"
+✅ RIGHT: "בתוכן אורגני של TikTok, שפה כזו עובדת. בפרסומות Meta — תיחסם"
+
+❌ WRONG: "השפה עלולה להשפיע לרעה על הפרסומות"
+✅ RIGHT: "פרסומות מטא ידחו את זה — הכן גרסה נקייה לקמפיין, שמור את המקור לאורגני"
+
+For 'detected' field: paraphrase or generalize what was found — do NOT reproduce specific harmful words.` : `For 'detected' field: paraphrase or describe the pattern — do not reproduce specific harmful words.`}
+
+Only include platforms from this list in platformImpacts: ${(context.platforms ?? ['instagram']).join(', ')}
+
+Return ONLY valid JSON:
+{
+  "overallLevel": "clean|mild|moderate|strong",
+  "signals": [
+    {
+      "category": "profanity|emotional|slang|aggressive|sensitive-topic|authentic-expression",
+      "detected": "<paraphrase of what was detected — do NOT reproduce harmful words>",
+      "effect": "helps|hurts|neutral",
+      "reachImpact": "<one sentence — effect on algorithmic reach>",
+      "viewerReaction": "<one sentence — how viewers will feel>",
+      "adFriendly": <true|false>,
+      "platformNote": "<optional: one platform-specific note>"
+    }
+  ],
+  "platformImpacts": [
+    {
+      "platform": "<platform id from: ${(context.platforms ?? ['instagram']).join('|')}>",
+      "impact": "none|minor|moderate|significant",
+      "note": "<one short line>"
+    }
+  ],
+  "authenticityScore": <0-100: how authentic/real the language makes content feel>,
+  "adFriendly": <true|false: overall ad compatibility>,
+  "helpsOrHurts": "helps|hurts|neutral",
+  "summary": "<2-3 sentences — honest performance assessment, not moral judgment>",
+  "recommendation": "<one specific action>"
+}`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: systemMsg },
+      { role: 'user', content: userMsg },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.1,
+    seed: 42,
+    max_tokens: 1200,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  const VALID_LEVELS: ContentSafetyLevel[] = ['clean', 'mild', 'moderate', 'strong'];
+  const VALID_EFFECTS: LanguageSignalEffect[] = ['helps', 'hurts', 'neutral'];
+  const VALID_CATEGORIES: LanguageSignalCategory[] = ['profanity', 'emotional', 'slang', 'aggressive', 'sensitive-topic', 'authentic-expression'];
+  const VALID_PLATFORMS = context.platforms ?? ['instagram'];
+
+  const sanitizeLevel = (v: unknown): ContentSafetyLevel =>
+    VALID_LEVELS.includes(v as ContentSafetyLevel) ? (v as ContentSafetyLevel) : 'mild';
+  const sanitizeEffect = (v: unknown): LanguageSignalEffect =>
+    VALID_EFFECTS.includes(v as LanguageSignalEffect) ? (v as LanguageSignalEffect) : 'neutral';
+  const sanitizeCategory = (v: unknown): LanguageSignalCategory =>
+    VALID_CATEGORIES.includes(v as LanguageSignalCategory) ? (v as LanguageSignalCategory) : 'emotional';
+
+  const signals: LanguageSignal[] = Array.isArray(raw.signals)
+    ? raw.signals.slice(0, 5).map((s: Record<string, unknown>) => ({
+        category: sanitizeCategory(s.category),
+        detected: String(s.detected || ''),
+        effect: sanitizeEffect(s.effect),
+        reachImpact: String(s.reachImpact || ''),
+        viewerReaction: String(s.viewerReaction || ''),
+        adFriendly: Boolean(s.adFriendly ?? true),
+        ...(s.platformNote && String(s.platformNote).trim() ? { platformNote: String(s.platformNote) } : {}),
+      }))
+    : [];
+
+  const platformImpacts: PlatformLanguageImpact[] = Array.isArray(raw.platformImpacts)
+    ? raw.platformImpacts
+        .filter((p: Record<string, unknown>) => VALID_PLATFORMS.includes(p.platform as never))
+        .slice(0, 6)
+        .map((p: Record<string, unknown>) => ({
+          platform: p.platform as PlatformLanguageImpact['platform'],
+          impact: (['none', 'minor', 'moderate', 'significant'].includes(p.impact as string)
+            ? p.impact
+            : 'none') as PlatformLanguageImpact['impact'],
+          note: String(p.note || ''),
+        }))
+    : [];
+
+  const helpsOrHurts = (['helps', 'hurts', 'neutral'].includes(raw.helpsOrHurts as string)
+    ? raw.helpsOrHurts
+    : 'neutral') as 'helps' | 'hurts' | 'neutral';
+
+  return {
+    overallLevel: sanitizeLevel(raw.overallLevel),
+    signals,
+    platformImpacts,
+    authenticityScore: Math.max(0, Math.min(100, Math.round(Number(raw.authenticityScore) || 60))),
+    adFriendly: Boolean(raw.adFriendly ?? true),
+    helpsOrHurts,
+    summary: String(raw.summary || ''),
+    recommendation: String(raw.recommendation || ''),
   };
 }
 
@@ -1200,7 +1349,7 @@ Return ONLY valid JSON:
       { role: 'user', content },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.4,
+    temperature: 0.1,
     seed: 42,
     max_tokens: 1800,
   });

@@ -255,6 +255,47 @@ export interface ViewerPsychology {
   emotionExplained: string;
 }
 
+// ─── Language & Safety Detection (Optional Layer) ─────────────────────────────
+
+export type LanguageSignalEffect = 'helps' | 'hurts' | 'neutral';
+
+export type LanguageSignalCategory =
+  | 'profanity'
+  | 'emotional'
+  | 'slang'
+  | 'aggressive'
+  | 'sensitive-topic'
+  | 'authentic-expression';
+
+export type ContentSafetyLevel = 'clean' | 'mild' | 'moderate' | 'strong';
+
+export interface LanguageSignal {
+  category: LanguageSignalCategory;
+  detected: string;
+  effect: LanguageSignalEffect;
+  reachImpact: string;
+  viewerReaction: string;
+  adFriendly: boolean;
+  platformNote?: string;
+}
+
+export interface PlatformLanguageImpact {
+  platform: Platform;
+  impact: 'none' | 'minor' | 'moderate' | 'significant';
+  note: string;
+}
+
+export interface LanguageSafetyAnalysis {
+  overallLevel: ContentSafetyLevel;
+  signals: LanguageSignal[];
+  platformImpacts: PlatformLanguageImpact[];
+  authenticityScore: number;
+  adFriendly: boolean;
+  helpsOrHurts: 'helps' | 'hurts' | 'neutral';
+  summary: string;
+  recommendation: string;
+}
+
 export interface CreatorIdea {
   title: string;
   hook: string;
