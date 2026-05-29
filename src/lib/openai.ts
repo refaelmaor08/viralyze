@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -1053,6 +1053,189 @@ Return JSON:
   });
 
   return JSON.parse(completion.choices[0].message.content || '{}');
+}
+
+export async function analyzeRecommendations(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding,
+  perceptionGap: PerceptionGap | null,
+  viewerPsychology: ViewerPsychology | null,
+  timelineAnalysis: TimelineAnalysis | null,
+  adaptiveAnalysis: AdaptiveAnalysis | null
+): Promise<Recommendations> {
+  const isHe = context.language === 'hebrew';
+  const dur = Math.round(frameData.duration);
+
+  const stageData: string[] = [];
+
+  stageData.push(`VIDEO TYPE: ${understanding.primaryType}
+CREATOR INTENT: ${understanding.creatorIntent}
+VIEWER FIRST IMPRESSION: ${understanding.viewerFirstImpression}`);
+
+  if (perceptionGap) {
+    const mismatchLines = perceptionGap.topMismatches.length > 0
+      ? perceptionGap.topMismatches.map((m) => `- ${m.aspect}: creator thought "${m.creatorThought}" → viewer feels "${m.viewerFeels}" [${m.severity}]`).join('\n')
+      : 'No major mismatches detected';
+    stageData.push(`PERCEPTION GAP (alignment score: ${perceptionGap.alignmentScore}/100):
+${perceptionGap.mismatchExplained}
+${mismatchLines}`);
+  }
+
+  if (viewerPsychology) {
+    const metrics = [
+      { k: 'scrollStoppingPower', s: viewerPsychology.scrollStoppingPower.score, e: viewerPsychology.scrollStoppingPower.explanation },
+      { k: 'attention', s: viewerPsychology.attention.score, e: viewerPsychology.attention.explanation },
+      { k: 'curiosity', s: viewerPsychology.curiosity.score, e: viewerPsychology.curiosity.explanation },
+      { k: 'trust', s: viewerPsychology.trust.score, e: viewerPsychology.trust.explanation },
+      { k: 'authenticity', s: viewerPsychology.authenticity.score, e: viewerPsychology.authenticity.explanation },
+      { k: 'emotionalConnection', s: viewerPsychology.emotionalConnection.score, e: viewerPsychology.emotionalConnection.explanation },
+      { k: 'boredom', s: viewerPsychology.boredom.score, e: viewerPsychology.boredom.explanation },
+      { k: 'confusion', s: viewerPsychology.confusion.score, e: viewerPsychology.confusion.explanation },
+    ].sort((a, b) => a.s - b.s);
+    const weakest = metrics.slice(0, 3);
+    stageData.push(`VIEWER PSYCHOLOGY:
+Why viewers leave: ${viewerPsychology.whyLeave.join(' | ')}
+Why viewers stay: ${viewerPsychology.whyStay.join(' | ')}
+Weakest metrics: ${weakest.map((m) => `${m.k}=${m.s}: "${m.e}"`).join('; ')}
+Authenticity: ${viewerPsychology.authenticityExplained}
+Emotion: ${viewerPsychology.emotionExplained}`);
+  }
+
+  if (timelineAnalysis) {
+    const problems = timelineAnalysis.moments.filter((m) => m.quality === 'weak' || m.quality === 'critical');
+    stageData.push(`TIMELINE (retention estimate: ${timelineAnalysis.retentionEstimate}%, critical drop: ${timelineAnalysis.criticalDropSec !== null ? `${timelineAnalysis.criticalDropSec}s` : 'none'}, best moment: ${timelineAnalysis.bestMomentSec !== null ? `${timelineAnalysis.bestMomentSec}s` : 'none'}):
+Problem moments: ${problems.map((m) => `[${m.startSec}-${m.endSec}s ${m.quality}/${m.issue ?? 'issue'}] ${m.description}${m.fix ? ` → FIX: ${m.fix}` : ''}`).join(' | ')}
+Summary: ${timelineAnalysis.summary}`);
+  }
+
+  if (adaptiveAnalysis) {
+    const lowMetrics = adaptiveAnalysis.metrics.filter((m) => m.score < 55);
+    stageData.push(`ADAPTIVE ANALYSIS (profile: ${adaptiveAnalysis.profileType}, verdict: "${adaptiveAnalysis.verdict}"):
+Critical fixes: ${adaptiveAnalysis.criticalFixes.join(' | ')}
+Low-scoring metrics: ${lowMetrics.map((m) => `${m.label}=${m.score}: "${m.explanation}"`).join('; ')}`);
+  }
+
+  const content: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `You are generating personalized recommendations for a ${dur}-second ${understanding.primaryType} video.
+
+COMPLETE ANALYSIS FROM ALL 5 PREVIOUS STAGES:
+${stageData.join('\n\n')}
+
+Study the ${frameData.frames.length} extracted frames to ensure visual grounding.
+
+YOUR TASK: Generate specific, data-driven recommendations that feel written FOR THIS EXACT VIDEO — not generic advice.
+
+MANDATORY RULE: Every recommendation MUST reference specific data from the stages above. Cite actual scores, actual seconds, actual viewer reactions from the data. Example of WRONG: "Improve your hook." Example of RIGHT: "Your scrollStoppingPower is 63 and timeline shows a critical-quality opening 0-2s — cut the dead opening and start mid-action."
+
+Choose 3-5 most relevant categories for THIS video (only choose categories where there's real evidence of a problem):
+- "hook": Opening, scroll-stopping, first impression
+- "pacing": Timeline rhythm, editing speed, dead zones
+- "emotion": Emotional depth, connection, storytelling
+- "cta": Call-to-action strength, timing, urgency
+- "authenticity": Trust, naturalness, staging issues
+- "fix": Specific technical edits (cut, music, subtitles, speed)
+
+Per category: 2-3 recommendations. Each with:
+- priority: "critical" if score <45 or critical timeline issue | "high" if score 45-62 or weak issue | "medium" for refinements
+- title: 4-6 words, direct, specific
+- problem: 1-2 sentences — EXACT issue with data reference (cite score numbers, seconds, viewer quotes from the analysis)
+- fix: 1-2 sentences — SPECIFIC action, not abstract advice
+- example: (optional) an exact script line, edit instruction, or replacement text
+
+Also:
+- priorityAction: single most impactful thing to do FIRST — specific, not generic, max 1 sentence
+- potentialGain: realistic % improvement in retention/performance from top fixes (range 5-35, be honest and conservative)
+
+${isHe ? `MANDATORY HEBREW RULES — write like a real content director, not a report:
+
+❌ WRONG problem: "קיים פגם בפוטנציאל ה-Hook עקב פתיחה לא יעילה"
+✅ RIGHT problem: "ה-scrollStoppingPower עמד על 63 וציר הזמן מראה 3 שניות קריטיות ריקות — 40% מהצופים כבר גללו לפני שמשהו קרה"
+
+❌ WRONG fix: "מומלץ לשפר את קצב העריכה ואת חוויית הצופה"
+✅ RIGHT fix: "גזור את שנייה 0-3 לחלוטין — התחל ישירות מהרגע שאתה מדבר, לא לפניו"
+
+❌ WRONG example: "שיפור ה-Hook יגביר את המעורבות"
+✅ RIGHT example: "במקום 'שלום לכולם...' — 'עשיתי את הטעות הזו 50 פעם לפני שהבנתי'"
+
+Write ALL text in simple, direct Israeli Hebrew.` : `Write ALL text in direct, conversational English. Reference specific numbers. Short sentences.`}
+
+Return ONLY valid JSON:
+{
+  "sections": [
+    {
+      "category": "hook|pacing|emotion|cta|authenticity|fix",
+      "recommendations": [
+        {
+          "priority": "critical|high|medium",
+          "title": "<4-6 words>",
+          "problem": "<specific with data reference>",
+          "fix": "<specific action>",
+          "example": "<optional exact example>"
+        }
+      ]
+    }
+  ],
+  "priorityAction": "<single most important action>",
+  "potentialGain": <5-35>
+}`,
+    },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'low' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are an elite video content strategist synthesizing 5 stages of analysis into specific, personalized recommendations. You cite real data — scores, seconds, viewer reactions — in every recommendation. You never write generic advice. ${isHe ? 'Write in simple, punchy Israeli Hebrew.' : 'Write in direct, conversational English.'} Respond ONLY with valid JSON.`,
+      },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.4,
+    seed: 42,
+    max_tokens: 1800,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  const VALID_PRIORITIES: RecommendationPriority[] = ['critical', 'high', 'medium'];
+  const VALID_CATEGORIES: RecommendationCategoryType[] = ['hook', 'pacing', 'emotion', 'cta', 'authenticity', 'fix'];
+
+  const sanitizePriority = (v: unknown): RecommendationPriority =>
+    VALID_PRIORITIES.includes(v as RecommendationPriority) ? (v as RecommendationPriority) : 'medium';
+
+  const sanitizeCategory = (v: unknown): RecommendationCategoryType =>
+    VALID_CATEGORIES.includes(v as RecommendationCategoryType) ? (v as RecommendationCategoryType) : 'fix';
+
+  const sections: RecommendationSection[] = Array.isArray(raw.sections)
+    ? raw.sections.slice(0, 6).map((s: Record<string, unknown>) => ({
+        category: sanitizeCategory(s.category),
+        recommendations: Array.isArray(s.recommendations)
+          ? s.recommendations.slice(0, 3).map((r: Record<string, unknown>): Recommendation => ({
+              priority: sanitizePriority(r.priority),
+              title: String(r.title || ''),
+              problem: String(r.problem || ''),
+              fix: String(r.fix || ''),
+              ...(r.example && String(r.example).trim() ? { example: String(r.example) } : {}),
+            }))
+          : [],
+      }))
+    : [];
+
+  return {
+    sections,
+    priorityAction: String(raw.priorityAction || ''),
+    potentialGain: Math.max(5, Math.min(35, Math.round(Number(raw.potentialGain) || 15))),
+  };
 }
 
 export async function generateCreatorIdeas(

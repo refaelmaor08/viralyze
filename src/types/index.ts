@@ -153,6 +153,30 @@ export interface VideoFrameData {
   height: number;
 }
 
+// ─── Recommendation Engine (Stage 6) ──────────────────────────────────────────
+
+export type RecommendationPriority = 'critical' | 'high' | 'medium';
+export type RecommendationCategoryType = 'hook' | 'pacing' | 'emotion' | 'cta' | 'authenticity' | 'fix';
+
+export interface Recommendation {
+  priority: RecommendationPriority;
+  title: string;
+  problem: string;
+  fix: string;
+  example?: string;
+}
+
+export interface RecommendationSection {
+  category: RecommendationCategoryType;
+  recommendations: Recommendation[];
+}
+
+export interface Recommendations {
+  sections: RecommendationSection[];
+  priorityAction: string;
+  potentialGain: number;
+}
+
 // ─── Adaptive Analysis Engine (Stage 5) ───────────────────────────────────────
 
 export type AnalysisProfileType =

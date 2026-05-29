@@ -20,6 +20,7 @@ import type {
   ViewerPsychology,
   TimelineAnalysis,
   AdaptiveAnalysis,
+  Recommendations,
 } from '@/types';
 
 const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
@@ -1234,6 +1235,221 @@ export async function analyzeViewerPsychology(
   }
   const { analyzeViewerPsychology: openaiPsychology } = await import('./openai');
   return openaiPsychology(frameData, context, understanding);
+}
+
+// ─── Demo recommendations scenarios ───────────────────────────────────────────
+
+const DEMO_RECOMMENDATIONS_HE: Recommendations[] = [
+  {
+    sections: [
+      {
+        category: 'hook',
+        recommendations: [
+          {
+            priority: 'critical',
+            title: 'הפתיחה מאבדת חצי מהצופים',
+            problem: 'ציר הזמן מראה שנייה 0-2 בדרגת איכות "critical" עם hook-weak — ה-scrollStoppingPower עמד על 63 בלבד. 40% מהצופים כבר גללו לפני שמשהו קרה.',
+            fix: 'גזור את כל שנייה 0-3 ותתחיל ישירות מהרגע שמשהו קורה — תנועה, דיבור, או טקסט גדול על מסך.',
+            example: 'במקום "היי, שמי..." — "עשיתי את הטעות הזו שנה שלמה לפני שהבנתי."',
+          },
+          {
+            priority: 'high',
+            title: 'אין שאלה או הבטחה בשנייה הראשונה',
+            problem: 'ה-curiosity עמד על 54 — הצופה לא הרגיש שיש כאן משהו שחייב לראות. הפתיחה לא יצרה מתח.',
+            fix: 'הוסף שאלה מסקרנת או הצהרה מפתיעה בשלוש המילים הראשונות — לפני שאתה מסביר כלום.',
+          },
+        ],
+      },
+      {
+        category: 'cta',
+        recommendations: [
+          {
+            priority: 'critical',
+            title: 'אין שום דחיפות ב-CTA',
+            problem: 'ניתוח ה-Adaptive זיהה urgency=28/100 — הצופה לא מרגיש שום סיבה לפעול עכשיו. אפשר לחזור לזה מחר.',
+            fix: 'הוסף אלמנט זמן-אמת: "עד סוף השבוע", "100 מקומות ראשונים", או "המחיר עולה ביום ראשון".',
+            example: '"הזמן היום ב-20% הנחה — ההצעה תפוג בחצות"',
+          },
+          {
+            priority: 'high',
+            title: 'ה-CTA מגיע אחרי שרוב הצופים כבר עזבו',
+            problem: 'שיעור השמירה הוערך ב-34% — כשה-CTA הגיע, 66% מהצופים כבר לא היו שם. ה-purchaseIntent עמד על 35.',
+            fix: 'הוסף גרסה קצרה של ה-CTA גם בשנייה 8-10 — לא רק בסוף.',
+          },
+        ],
+      },
+      {
+        category: 'authenticity',
+        recommendations: [
+          {
+            priority: 'high',
+            title: 'חסרה הוכחה חברתית אמיתית',
+            problem: 'ה-trustSignals עמד על 55/100 — הצופה לא מאמין מספיק. זיהוי הפער: "מוכר שמשכנע" במקום "חבר שממליץ".',
+            fix: 'הוסף 3-5 שניות של תגובת לקוח, צילום מסך של ביקורת, או מספר לקוחות ספציפי.',
+            example: '"יותר מ-2,000 לקוחות השתמשו בזה החודש — כולל [שם+עיר]"',
+          },
+        ],
+      },
+      {
+        category: 'fix',
+        recommendations: [
+          {
+            priority: 'medium',
+            title: 'קצץ שנייה 11-17',
+            problem: 'ציר הזמן מזהה שנייה 11-17 כ"weak" עם pacing-slow — פחות תנועה בין פריימים. שיעור השמירה נחלש.',
+            fix: 'גזור 4-5 שניות מהאזור הזה. הוסף חתך נוסף בשנייה 13 כדי לשמור על אנרגיה.',
+          },
+        ],
+      },
+    ],
+    priorityAction: 'הוסף אלמנט דחיפות ל-CTA — מחיר, כמות מוגבלת, או תאריך — זה הדבר הבודד שישפר הכי הרבה את שיעור ההמרה',
+    potentialGain: 27,
+  },
+  {
+    sections: [
+      {
+        category: 'hook',
+        recommendations: [
+          {
+            priority: 'high',
+            title: 'הפתיחה נראית מוכנה מדי',
+            problem: 'פער התפיסה: alignment score 38/100, ה-viewer רואה "פרסומת מאולתרת" במקום UGC. ה-authenticity עמד על 45 — "קצת מוכן, כמו שמישהו תרגל לפני הצילום".',
+            fix: 'צלם מחדש עם טלפון, ללא תאורה מיוחדת, באמצע פעולה שאתה כבר עושה — לא "מתכונן לצלם".',
+            example: 'במקום לשבת ולהסתכל למצלמה — צלם תוך כדי שאתה מוריד מוצר, פותח חבילה, או הולך.',
+          },
+        ],
+      },
+      {
+        category: 'authenticity',
+        recommendations: [
+          {
+            priority: 'critical',
+            title: 'הסרטון מרגיש כמו פרסומת',
+            problem: 'פער התפיסה חמור: מה שהצופה מרגיש = "פרסומת מאולתרת שמנסה להיראות אמיתית". Trust=58, authenticity=45.',
+            fix: 'הוסף רגע של כישלון אמיתי, הפתעה, או תגובה ספונטנית לפני שאתה מציג את הפתרון.',
+          },
+          {
+            priority: 'high',
+            title: 'הסביבה נראית סטייגד',
+            problem: 'מתוך ניתוח הפער: "סביבה: יוצר חשב — טבעי ויומיומי | צופה מרגיש — סטאגד ומאורגן" [medium severity].',
+            fix: 'צלם במקום שאתה נמצא בו ממילא — לא "הסביבה הנכונה". פחות סדר = יותר אמינות.',
+          },
+        ],
+      },
+      {
+        category: 'emotion',
+        recommendations: [
+          {
+            priority: 'high',
+            title: 'אין רגע של חיבור אישי',
+            problem: 'emotionalConnection=41 — "לא נגע בי, תוכן סבבה, לא יותר מזה". הצופה לא מוצא נקודת זיהוי.',
+            fix: 'פתח עם 5 שניות של הכאב האישי שלך — לפני שאתה מציג כלום. "הייתי בדיוק במצב שאתה נמצא בו."',
+          },
+        ],
+      },
+      {
+        category: 'fix',
+        recommendations: [
+          {
+            priority: 'medium',
+            title: 'הורד את עוצמת המוזיקה',
+            problem: 'הסרטון נשמע כמו פרסומת — חלקית בגלל מוזיקת רקע שולטת. זה מחזק את תחושת ה-"מסחרי" שהצופה מזהה.',
+            fix: 'הורד את עוצמת המוזיקה ב-40-50%, או עבור למוזיקה אורגנית יותר כמו lo-fi אקוסטי.',
+          },
+        ],
+      },
+    ],
+    priorityAction: 'צלם מחדש את הפתיחה — 10 שניות, טלפון, ללא תאורה, ממש תוך כדי שאתה עושה משהו. זה יקפיץ את ה-alignment score מ-38 ל-70+',
+    potentialGain: 22,
+  },
+];
+
+const DEMO_RECOMMENDATIONS_EN: Recommendations[] = [
+  {
+    sections: [
+      {
+        category: 'hook',
+        recommendations: [
+          {
+            priority: 'critical',
+            title: 'Opening kills half your viewers',
+            problem: 'Timeline shows 0-3s as critical quality with hook-weak. scrollStoppingPower is 71 — enough to stop the scroll, but boredom kicks in immediately after.',
+            fix: 'Cut everything before the first moment of movement or speech. Start mid-action, mid-sentence, mid-life.',
+            example: 'Instead of "Hey guys, today I want to talk about..." → "I spent three years doing it wrong before I figured this out."',
+          },
+        ],
+      },
+      {
+        category: 'pacing',
+        recommendations: [
+          {
+            priority: 'high',
+            title: 'Dead zone at seconds 13-19',
+            problem: 'Timeline: seconds 13-19 rated weak with pacing-slow. Fewer frame changes, energy drops. Retention estimate: 31% — most viewers are already gone by here.',
+            fix: 'Speed up 15% or add a cut at second 15. Remove 3-4 seconds from this section entirely.',
+          },
+        ],
+      },
+      {
+        category: 'emotion',
+        recommendations: [
+          {
+            priority: 'high',
+            title: 'No emotional hook to hold on to',
+            problem: "emotionalConnection=49, emotionExplained: 'Never reached an emotional beat — informative content but nothing that touched me.' Viewers have no personal reason to care.",
+            fix: 'Add a 5-second personal moment of vulnerability before delivering your main point. Make it about a failure, not a win.',
+          },
+        ],
+      },
+      {
+        category: 'authenticity',
+        recommendations: [
+          {
+            priority: 'high',
+            title: 'Delivery feels rehearsed',
+            problem: "authenticity=55: 'Feels slightly rehearsed — like they tried hard to look natural.' Trust=63. Viewers sense the script.",
+            fix: 'Record 5 takes without a script — just talk. Use the most natural one, even if it has a stumble.',
+            example: 'Add one unscripted sentence mid-video that references something happening right now, in real time.',
+          },
+        ],
+      },
+      {
+        category: 'fix',
+        recommendations: [
+          {
+            priority: 'medium',
+            title: 'Add a specific CTA at the end',
+            problem: "Timeline shows the ending as weak with cta-weak. 'Video ends without asking for anything specific — viewer scrolls on.'",
+            fix: 'One action, one sentence: "Save this if it helped" or "Share with someone dealing with [specific problem]."',
+          },
+        ],
+      },
+    ],
+    priorityAction: 'Cut the dead opening (0-3 seconds) and start mid-action — this single change can lift retention by 15-20 percentage points based on the timeline data',
+    potentialGain: 21,
+  },
+];
+
+async function getDemoRecommendations(language: string): Promise<Recommendations> {
+  await new Promise((r) => setTimeout(r, 1700 + Math.random() * 900));
+  const pool = language === 'english' ? DEMO_RECOMMENDATIONS_EN : DEMO_RECOMMENDATIONS_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+export async function analyzeRecommendations(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  understanding: VideoUnderstanding,
+  perceptionGap: PerceptionGap | null,
+  viewerPsychology: ViewerPsychology | null,
+  timelineAnalysis: TimelineAnalysis | null,
+  adaptiveAnalysis: AdaptiveAnalysis | null
+): Promise<Recommendations> {
+  if (AI_MODE === 'demo') {
+    return getDemoRecommendations(context.language);
+  }
+  const { analyzeRecommendations: openaiRecs } = await import('./openai');
+  return openaiRecs(frameData, context, understanding, perceptionGap, viewerPsychology, timelineAnalysis, adaptiveAnalysis);
 }
 
 export async function analyzeCompetitor(
