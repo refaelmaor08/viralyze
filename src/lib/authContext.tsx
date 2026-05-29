@@ -12,6 +12,7 @@ import { supabase, supabaseReady } from './supabase';
 import { clearUser, getUser, setUser, type AuthUser } from './auth';
 import { type PlanId, getPlan } from './plans';
 import { getUsedAnalyses } from './analyses';
+import { UNLIMITED_TEST_MODE } from './testMode';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -94,16 +95,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserState(getUser());
   }, []);
 
-  const UNLIMITED = process.env.NEXT_PUBLIC_UNLIMITED_TEST_MODE === 'true';
-
   const planId: PlanId = user?.plan ?? 'free';
   const basePlan = getPlan(planId);
   // In unlimited test mode: give unlimited duration + analyses so no UI blockers appear
-  const plan = UNLIMITED
+  const plan = UNLIMITED_TEST_MODE
     ? { ...basePlan, maxDurationSec: 600, monthlyAnalyses: 9999 }
     : basePlan;
-  const usedAnalyses = (UNLIMITED || !user) ? 0 : getUsedAnalyses(user.email, plan.isLifetimeLimit);
-  const remainingAnalyses = UNLIMITED ? 9999 : Math.max(0, plan.monthlyAnalyses - usedAnalyses);
+  const usedAnalyses = (UNLIMITED_TEST_MODE || !user) ? 0 : getUsedAnalyses(user.email, plan.isLifetimeLimit);
+  const remainingAnalyses = UNLIMITED_TEST_MODE ? 9999 : Math.max(0, plan.monthlyAnalyses - usedAnalyses);
 
   return (
     <AuthContext.Provider value={{ user, supabaseUser, loading, plan, usedAnalyses, remainingAnalyses, signOut, refresh }}>

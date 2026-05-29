@@ -2,7 +2,7 @@
 // Free plan: tracks lifetime total
 // Paid plans: tracks current month only
 
-const UNLIMITED = process.env.NEXT_PUBLIC_UNLIMITED_TEST_MODE === 'true';
+import { UNLIMITED_TEST_MODE as UNLIMITED } from './testMode';
 
 function lifetimeKey(userId: string): string {
   return `viralyze_usage_total_${userId}`;
@@ -24,7 +24,7 @@ export function getUsedAnalyses(userId: string, isLifetimeLimit = false): number
 }
 
 export function incrementAnalyses(userId: string, isLifetimeLimit = false): void {
-  if (UNLIMITED) return; // bypass in unlimited test mode
+  if (UNLIMITED) return;
   if (typeof window === 'undefined') return;
   try {
     const n = getUsedAnalyses(userId, isLifetimeLimit);

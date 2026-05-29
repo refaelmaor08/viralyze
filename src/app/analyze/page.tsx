@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/authContext';
 import { incrementAnalyses } from '@/lib/analyses';
 import { formatDurationLimit } from '@/lib/plans';
 import { getVideoFingerprint, getCachedResult, setCachedResult } from '@/lib/videoCache';
+import { UNLIMITED_TEST_MODE as IS_UNLIMITED } from '@/lib/testMode';
 import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
 import UnderstandingResult from '@/components/analyze/UnderstandingResult';
 import PerceptionGapResult from '@/components/analyze/PerceptionGapResult';
@@ -25,7 +26,6 @@ import LanguageSafetyGate from '@/components/analyze/LanguageSafetyGate';
 import LanguageSafetyResult from '@/components/analyze/LanguageSafetyResult';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
-const IS_UNLIMITED = process.env.NEXT_PUBLIC_UNLIMITED_TEST_MODE === 'true';
 
 const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader'), { ssr: false });
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
