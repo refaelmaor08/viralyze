@@ -35,6 +35,7 @@ function AnalyzeContent() {
   const [frameDataRef, setFrameDataRef] = useState<VideoFrameData | null>(null);
   const [error, setError] = useState('');
   const [durationError, setDurationError] = useState('');
+  const [prepWarning, setPrepWarning] = useState('');
   const [context, setContext] = useState<Partial<SimpleVideoContext>>({
     language: 'hebrew',
     platforms: ['instagram'],
@@ -62,20 +63,21 @@ function AnalyzeContent() {
         video.preload = 'metadata';
         video.muted = true;
         video.src = url;
+        const cleanup = (val: boolean) => { URL.revokeObjectURL(url); resolve(val); };
         video.onloadedmetadata = () => {
-          URL.revokeObjectURL(url);
           const dur = video.duration;
           if (dur > plan.maxDurationSec) {
             setDurationError(
               `הסרטון ארוך מדי — ${Math.round(dur)} שניות. התוכנית ${plan.nameHe} מאפשרת עד ${formatDurationLimit(plan.maxDurationSec)} בלבד.`
             );
-            resolve(false);
+            cleanup(false);
           } else {
             setDurationError('');
-            resolve(true);
+            cleanup(true);
           }
         };
-        video.onerror = () => { URL.revokeObjectURL(url); resolve(true); };
+        video.onerror = () => cleanup(true);
+        setTimeout(() => cleanup(true), 10_000);
       });
     } catch {
       return true;
@@ -83,10 +85,27 @@ function AnalyzeContent() {
   }, [plan]);
 
   const extractFramesAsync = useCallback(async (selectedFile: File) => {
+    const t0 = Date.now();
+    const elapsed = () => `+${Date.now() - t0}ms`;
+    let timedOut = false;
+
+    // 30s hard timeout — enable button regardless so it never stays disabled forever
+    safetyTimerRef.current = setTimeout(() => {
+      safetyTimerRef.current = null;
+      timedOut = true;
+      console.warn(`[viralyze:prepare] ⏱ 30s timeout — enabling button (${elapsed()})`);
+      setPrepWarning('הכנת הסרטון לקחה יותר מ-30 שניות. ניתן לנתח עם הנתונים שנאספו.');
+      setFramesReady(true);
+    }, 30_000);
+
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
-      const meta = await getVideoMeta(selectedFile);
 
+      console.log(`[viralyze:prepare] reading metadata (${elapsed()})`);
+      const meta = await getVideoMeta(selectedFile);
+      console.log(`[viralyze:prepare] metadata loaded — dur=${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
+
+      // Thumbnail — best-effort, 8s timeout
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const video = document.createElement('video');
@@ -105,20 +124,31 @@ function AnalyzeContent() {
           res();
         };
         video.onerror = () => { URL.revokeObjectURL(url); res(); };
+        setTimeout(() => { URL.revokeObjectURL(url); res(); }, 8_000);
       });
 
-      // Run frame extraction and audio extraction in parallel
       const { extractAudio } = await import('@/lib/audioExtraction');
+
+      console.log(`[viralyze:prepare] frame extraction started (${elapsed()})`);
+      console.log(`[viralyze:prepare] audio extraction started (${elapsed()})`);
+
       const [extracted] = await Promise.all([
         extractFrames(selectedFile, (current, total) => {
           setFrameProgress({ current, total });
         }),
-        extractAudio(selectedFile).then((blob) => {
+        Promise.race([
+          extractAudio(selectedFile),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
+        ]).then((blob) => {
+          console.log(`[viralyze:prepare] audio done — size=${blob?.size ?? 0}B (${elapsed()})`);
           audioBlobRef.current = blob;
         }).catch(() => {
+          console.warn(`[viralyze:prepare] audio failed (${elapsed()})`);
           audioBlobRef.current = null;
         }),
       ]);
+
+      console.log(`[viralyze:prepare] frame extraction completed — frameCount=${extracted.frames.length} (${elapsed()})`);
 
       clearSafetyTimer();
       setFrameDataRef({
@@ -131,11 +161,17 @@ function AnalyzeContent() {
         width: meta.width,
         height: meta.height,
       });
-      setFramesReady(true);
+      if (!timedOut) {
+        setFramesReady(true);
+      }
+      // If timed out, framesReady is already true — frameDataRef update is still useful
     } catch (err) {
-      console.error('Frame extraction failed:', err);
+      console.error(`[viralyze:prepare] error: ${err} (${elapsed()})`);
       clearSafetyTimer();
-      setFramesReady(true);
+      if (!timedOut) {
+        setPrepWarning('שגיאה בהכנת הסרטון. ניתן לנסות לנתח בכל זאת.');
+        setFramesReady(true);
+      }
     }
   }, [clearSafetyTimer]);
 
@@ -176,6 +212,7 @@ function AnalyzeContent() {
       setFrameProgress(null);
       setFramesReady(false);
       setDurationError('');
+      setPrepWarning('');
 
       videoFingerprintRef.current = getVideoFingerprint(selectedFile);
 
@@ -207,6 +244,7 @@ function AnalyzeContent() {
     setFrameProgress(null);
     setThumbnailUrl(null);
     setDurationError('');
+    setPrepWarning('');
     audioBlobRef.current = null;
   }, [clearSafetyTimer]);
 
@@ -521,6 +559,22 @@ function AnalyzeContent() {
                 planMaxDuration={plan.maxDurationSec}
               />
             </motion.div>
+
+            {/* Preparation warning (timeout or extraction error) */}
+            <AnimatePresence>
+              {prepWarning && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mb-5 flex items-start gap-3 p-4 rounded-xl"
+                  style={{ background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)' }}
+                >
+                  <AlertCircle className="w-4 h-4 text-[#D4A843]/70 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-white/55 text-right leading-relaxed">{prepWarning}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Duration error */}
             <AnimatePresence>
