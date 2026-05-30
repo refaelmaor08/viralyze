@@ -41,6 +41,7 @@ function AnalyzeContent() {
     platforms: ['instagram'],
   });
   const [debugInfo, setDebugInfo] = useState<{ fingerprint: string; duration: number; cacheHit: boolean; aiMode: string } | null>(null);
+  const [dbg, setDbg] = useState({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null as boolean | null, analyzeStatus: 'idle' as 'idle'|'preparing'|'running'|'done'|'error', lastError: '' });
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
@@ -89,14 +90,16 @@ function AnalyzeContent() {
     const elapsed = () => `+${Date.now() - t0}ms`;
     let timedOut = false;
 
-    // 30s hard timeout — enable button regardless so it never stays disabled forever
+    setDbg(d => ({ ...d, analyzeStatus: 'preparing', frameCount: -1, audioReady: false, transcriptExists: null, lastError: '' }));
+
+    // 20s hard timeout — enable button regardless so it never stays disabled forever
     safetyTimerRef.current = setTimeout(() => {
       safetyTimerRef.current = null;
       timedOut = true;
-      console.warn(`[viralyze:prepare] ⏱ 30s timeout — enabling button (${elapsed()})`);
-      setPrepWarning('הכנת הסרטון לקחה יותר מ-30 שניות. ניתן לנתח עם הנתונים שנאספו.');
+      console.warn(`[viralyze:prepare] ⏱ 20s timeout — enabling button (${elapsed()})`);
+      setPrepWarning('הכנת הסרטון לקחה זמן רב. ניתן לנתח עם הנתונים שנאספו.');
       setFramesReady(true);
-    }, 30_000);
+    }, 20_000);
 
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
@@ -104,28 +107,32 @@ function AnalyzeContent() {
       console.log(`[viralyze:prepare] reading metadata (${elapsed()})`);
       const meta = await getVideoMeta(selectedFile);
       console.log(`[viralyze:prepare] metadata loaded — dur=${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
+      setDbg(d => ({ ...d, duration: meta.duration }));
 
-      // Thumbnail — best-effort, 8s timeout
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const video = document.createElement('video');
-      video.muted = true;
-      video.playsInline = true;
-      const url = URL.createObjectURL(selectedFile);
-      video.src = url;
-      await new Promise<void>((res) => {
-        video.onloadeddata = () => { video.currentTime = 0.3; };
-        video.onseeked = () => {
-          canvas.width = 120;
-          canvas.height = Math.round(120 * (video.videoHeight / video.videoWidth));
-          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-          setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
-          URL.revokeObjectURL(url);
-          res();
-        };
-        video.onerror = () => { URL.revokeObjectURL(url); res(); };
-        setTimeout(() => { URL.revokeObjectURL(url); res(); }, 8_000);
-      });
+      // Thumbnail — use onloadedmetadata (faster than onloadeddata), 3s timeout
+      {
+        const canvas = document.createElement('canvas');
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        const url = URL.createObjectURL(selectedFile);
+        video.src = url;
+        await new Promise<void>((res) => {
+          let done = false;
+          const finish = () => { if (done) return; done = true; URL.revokeObjectURL(url); res(); };
+          video.onloadedmetadata = () => { video.currentTime = 0.5; };
+          video.onseeked = () => {
+            canvas.width = 120;
+            canvas.height = Math.round(120 * (video.videoHeight / Math.max(video.videoWidth, 1)));
+            canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+            setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8));
+            finish();
+          };
+          video.onerror = finish;
+          setTimeout(finish, 3_000);
+        });
+      }
 
       const { extractAudio } = await import('@/lib/audioExtraction');
 
@@ -142,6 +149,7 @@ function AnalyzeContent() {
         ]).then((blob) => {
           console.log(`[viralyze:prepare] audio done — size=${blob?.size ?? 0}B (${elapsed()})`);
           audioBlobRef.current = blob;
+          setDbg(d => ({ ...d, audioReady: blob != null && (blob?.size ?? 0) > 0 }));
         }).catch(() => {
           console.warn(`[viralyze:prepare] audio failed (${elapsed()})`);
           audioBlobRef.current = null;
@@ -149,6 +157,7 @@ function AnalyzeContent() {
       ]);
 
       console.log(`[viralyze:prepare] frame extraction completed — frameCount=${extracted.frames.length} (${elapsed()})`);
+      setDbg(d => ({ ...d, frameCount: extracted.frames.length }));
 
       clearSafetyTimer();
       setFrameDataRef({
@@ -164,12 +173,13 @@ function AnalyzeContent() {
       if (!timedOut) {
         setFramesReady(true);
       }
-      // If timed out, framesReady is already true — frameDataRef update is still useful
     } catch (err) {
-      console.error(`[viralyze:prepare] error: ${err} (${elapsed()})`);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[viralyze:prepare] error: ${msg} (${elapsed()})`);
+      setDbg(d => ({ ...d, lastError: msg }));
       clearSafetyTimer();
       if (!timedOut) {
-        setPrepWarning('שגיאה בהכנת הסרטון. ניתן לנסות לנתח בכל זאת.');
+        setPrepWarning(`שגיאה בהכנת הסרטון: ${msg}`);
         setFramesReady(true);
       }
     }
@@ -213,6 +223,7 @@ function AnalyzeContent() {
       setFramesReady(false);
       setDurationError('');
       setPrepWarning('');
+      setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '' });
 
       videoFingerprintRef.current = getVideoFingerprint(selectedFile);
 
@@ -245,6 +256,7 @@ function AnalyzeContent() {
     setThumbnailUrl(null);
     setDurationError('');
     setPrepWarning('');
+    setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '' });
     audioBlobRef.current = null;
   }, [clearSafetyTimer]);
 
@@ -253,6 +265,7 @@ function AnalyzeContent() {
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze) return;
     setError('');
+    setDbg(d => ({ ...d, analyzeStatus: 'running', lastError: '' }));
     setPhase('scanning');
 
     try {
@@ -330,6 +343,7 @@ function AnalyzeContent() {
         } catch {
           // Transcription failure is non-fatal — continue with frames-only analysis
         }
+        setDbg(d => ({ ...d, transcriptExists: transcriptData !== null }));
       }
 
       const response = await fetch('/api/analyze', {
@@ -372,6 +386,7 @@ function AnalyzeContent() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה';
       setError(msg);
+      setDbg(d => ({ ...d, analyzeStatus: 'error', lastError: msg }));
       setPhase('error');
     }
   }, [canAnalyze, context, file, frameDataRef, thumbnailUrl, user, plan, router]);
@@ -713,6 +728,20 @@ function AnalyzeContent() {
         )}
 
       </AnimatePresence>
+
+      {/* Temporary debug panel — visible whenever a file is selected */}
+      {file && (
+        <div className="fixed bottom-4 right-4 z-50 text-[10px] font-mono rounded-xl p-3 space-y-0.5 max-w-[220px]"
+          style={{ background: 'rgba(0,0,0,0.88)', border: '1px solid rgba(212,168,67,0.35)', color: 'rgba(255,255,255,0.7)' }}>
+          <div className="font-bold text-[#D4A843] mb-1 text-[11px]">🔍 Debug</div>
+          <div>duration: <span className="text-white">{dbg.duration > 0 ? `${dbg.duration.toFixed(1)}s` : '—'}</span></div>
+          <div>frameCount: <span className={dbg.frameCount >= 0 ? 'text-green-400' : 'text-yellow-400'}>{dbg.frameCount >= 0 ? dbg.frameCount : 'extracting…'}</span></div>
+          <div>audioReady: <span className={dbg.audioReady ? 'text-green-400' : 'text-white'}>{String(dbg.audioReady)}</span></div>
+          <div>transcriptExists: <span className={dbg.transcriptExists === true ? 'text-green-400' : dbg.transcriptExists === false ? 'text-orange-400' : 'text-white'}>{dbg.transcriptExists === null ? '—' : String(dbg.transcriptExists)}</span></div>
+          <div>analyzeStatus: <span className={dbg.analyzeStatus === 'error' ? 'text-red-400' : dbg.analyzeStatus === 'done' ? 'text-green-400' : 'text-[#D4A843]'}>{dbg.analyzeStatus}</span></div>
+          {dbg.lastError && <div className="text-red-400 break-all text-[9px] mt-1 leading-tight">{dbg.lastError.slice(0, 140)}</div>}
+        </div>
+      )}
 
       {/* Dev-only debug overlay */}
       {process.env.NODE_ENV === 'development' && debugInfo && (

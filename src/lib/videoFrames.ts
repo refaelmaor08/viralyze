@@ -111,7 +111,14 @@ export async function extractFrames(
     video.playsInline = true;
     video.preload = 'auto';
 
+    // If metadata never loads (common on first load of MOV), reject after 10s
+    const metaTimer = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      reject(new Error('extractFrames: metadata load timeout'));
+    }, 10_000);
+
     video.onloadedmetadata = () => {
+      clearTimeout(metaTimer);
       const dur = video.duration;
 
       const W = 480;
@@ -185,6 +192,7 @@ export async function extractFrames(
     };
 
     video.onerror = () => {
+      clearTimeout(metaTimer);
       URL.revokeObjectURL(url);
       reject(new Error('לא ניתן לטעון את הסרטון לניתוח'));
     };

@@ -60,13 +60,12 @@ export async function POST(req: NextRequest) {
     const result = await analyzeVideo(frameData, context, transcriptData ?? null);
     return NextResponse.json(result);
   } catch (error) {
-    const isDev = process.env.NODE_ENV === 'development';
     const message = error instanceof Error ? error.message : String(error);
     console.error('[Viralyze] Analysis error:', error);
     return NextResponse.json(
       {
-        error: isDev ? `שגיאת ניתוח: ${message}` : 'הניתוח נכשל. אנא נסה שוב.',
-        ...(isDev && { stack: error instanceof Error ? error.stack : undefined }),
+        error: message,
+        stack: error instanceof Error ? error.stack?.split('\n').slice(0, 4).join('\n') : undefined,
       },
       { status: 500 }
     );
