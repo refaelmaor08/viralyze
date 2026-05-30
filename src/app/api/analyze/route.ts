@@ -25,6 +25,27 @@ export async function POST(req: NextRequest) {
 
     const { frameData, context, transcriptData } = body;
 
+    // ── Analysis payload audit log ──────────────────────────────────────────
+    console.log('[viralyze:analyze] payload', JSON.stringify({
+      frameCount: frameData?.frames?.length ?? 0,
+      duration: frameData?.duration ?? 0,
+      editingPace: frameData?.editingPace ?? null,
+      cutsPerSecond: frameData?.cutsPerSecond ?? null,
+      sceneChanges: frameData?.sceneChanges ?? [],
+      frameTimestamps: frameData?.frameTimestamps ?? [],
+      transcript: {
+        hasSpeech: transcriptData?.hasSpeech ?? false,
+        language: transcriptData?.language ?? null,
+        speakingSpeedWpm: transcriptData?.speakingSpeedWpm ?? null,
+        hookWords: transcriptData?.hookWords ?? null,
+        ctaWords: transcriptData?.ctaWords ?? null,
+        silencePeriods: transcriptData?.silencePeriods ?? [],
+        wordCount: transcriptData?.words?.length ?? 0,
+        transcriptSnippet: transcriptData?.transcript?.slice(0, 300) ?? null,
+      },
+    }, null, 2));
+    // ────────────────────────────────────────────────────────────────────────
+
     if (!frameData?.frames) {
       return NextResponse.json(
         { error: 'לא התקבלו פריימים מהסרטון. אנא נסה להעלות שוב.' },

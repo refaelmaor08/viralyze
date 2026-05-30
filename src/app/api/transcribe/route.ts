@@ -81,6 +81,20 @@ export async function POST(req: Request): Promise<Response> {
       hasSpeech: words.length > 0,
     };
 
+    // ── Transcription audit log ─────────────────────────────────────────────
+    console.log('[viralyze:transcribe] result', JSON.stringify({
+      hasSpeech: result.hasSpeech,
+      language: result.language,
+      audioDuration: audioDuration,
+      wordCount: words.length,
+      speakingSpeedWpm: result.speakingSpeedWpm,
+      hookWords: result.hookWords,
+      ctaWords: result.ctaWords,
+      silencePeriods: result.silencePeriods,
+      transcriptSnippet: result.transcript.slice(0, 300),
+    }, null, 2));
+    // ────────────────────────────────────────────────────────────────────────
+
     return NextResponse.json(result);
   } catch (err) {
     console.error('[transcribe] error:', err);
