@@ -41,7 +41,7 @@ function AnalyzeContent() {
     platforms: ['instagram'],
   });
   const [debugInfo, setDebugInfo] = useState<{ fingerprint: string; duration: number; cacheHit: boolean; aiMode: string } | null>(null);
-  const [dbg, setDbg] = useState({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null as boolean | null, analyzeStatus: 'idle' as 'idle'|'preparing'|'running'|'done'|'error', lastError: '' });
+  const [dbg, setDbg] = useState({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null as boolean | null, analyzeStatus: 'idle' as 'idle'|'preparing'|'running'|'done'|'error', lastError: '', fileType: '', dimensions: '' });
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
@@ -107,7 +107,7 @@ function AnalyzeContent() {
       console.log(`[viralyze:prepare] reading metadata (${elapsed()})`);
       const meta = await getVideoMeta(selectedFile);
       console.log(`[viralyze:prepare] metadata loaded — dur=${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
-      setDbg(d => ({ ...d, duration: meta.duration }));
+      setDbg(d => ({ ...d, duration: meta.duration, dimensions: `${meta.width}×${meta.height}` }));
 
       // Thumbnail — use onloadedmetadata (faster than onloadeddata), 3s timeout
       {
@@ -223,7 +223,7 @@ function AnalyzeContent() {
       setFramesReady(false);
       setDurationError('');
       setPrepWarning('');
-      setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '' });
+      setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: selectedFile.type || 'unknown', dimensions: '' });
 
       videoFingerprintRef.current = getVideoFingerprint(selectedFile);
 
@@ -256,7 +256,7 @@ function AnalyzeContent() {
     setThumbnailUrl(null);
     setDurationError('');
     setPrepWarning('');
-    setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '' });
+    setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: '', dimensions: '' });
     audioBlobRef.current = null;
   }, [clearSafetyTimer]);
 
@@ -326,6 +326,15 @@ function AnalyzeContent() {
         editingPace: 'slow',
         cutsPerSecond: 0,
       };
+
+      // Guard: 0 frames = HEVC unsupported or prep timed out before extraction finished
+      if (finalFrameData.frames.length === 0) {
+        const msg = 'לא ניתן לחלץ פריימים מהסרטון. ייתכן שהפורמט אינו נתמך בדפדפן זה. נסה להמיר ל-MP4 ולהעלות שוב.';
+        setError(msg);
+        setDbg(d => ({ ...d, analyzeStatus: 'error', lastError: msg }));
+        setPhase('error');
+        return;
+      }
 
       // Transcribe audio if available (runs during the scanning screen)
       let transcriptData: TranscriptData | null = null;
@@ -731,15 +740,18 @@ function AnalyzeContent() {
 
       {/* Temporary debug panel — visible whenever a file is selected */}
       {file && (
-        <div className="fixed bottom-4 right-4 z-50 text-[10px] font-mono rounded-xl p-3 space-y-0.5 max-w-[220px]"
+        <div className="fixed bottom-4 right-4 z-50 text-[10px] font-mono rounded-xl p-3 space-y-0.5 max-w-[240px]"
           style={{ background: 'rgba(0,0,0,0.88)', border: '1px solid rgba(212,168,67,0.35)', color: 'rgba(255,255,255,0.7)' }}>
           <div className="font-bold text-[#D4A843] mb-1 text-[11px]">🔍 Debug</div>
+          <div>file: <span className="text-white/60">{file.name.slice(0, 22)}</span></div>
+          <div>type: <span className={dbg.fileType.includes('quicktime') || dbg.fileType.includes('mov') ? 'text-yellow-400' : 'text-white'}>{dbg.fileType || '—'}</span></div>
+          {dbg.dimensions && <div>size: <span className="text-white">{dbg.dimensions}</span></div>}
           <div>duration: <span className="text-white">{dbg.duration > 0 ? `${dbg.duration.toFixed(1)}s` : '—'}</span></div>
-          <div>frameCount: <span className={dbg.frameCount >= 0 ? 'text-green-400' : 'text-yellow-400'}>{dbg.frameCount >= 0 ? dbg.frameCount : 'extracting…'}</span></div>
+          <div>frameCount: <span className={dbg.frameCount > 5 ? 'text-green-400' : dbg.frameCount >= 0 ? 'text-yellow-400' : 'text-[#D4A843]'}>{dbg.frameCount >= 0 ? dbg.frameCount : 'extracting…'}</span></div>
           <div>audioReady: <span className={dbg.audioReady ? 'text-green-400' : 'text-white'}>{String(dbg.audioReady)}</span></div>
           <div>transcriptExists: <span className={dbg.transcriptExists === true ? 'text-green-400' : dbg.transcriptExists === false ? 'text-orange-400' : 'text-white'}>{dbg.transcriptExists === null ? '—' : String(dbg.transcriptExists)}</span></div>
           <div>analyzeStatus: <span className={dbg.analyzeStatus === 'error' ? 'text-red-400' : dbg.analyzeStatus === 'done' ? 'text-green-400' : 'text-[#D4A843]'}>{dbg.analyzeStatus}</span></div>
-          {dbg.lastError && <div className="text-red-400 break-all text-[9px] mt-1 leading-tight">{dbg.lastError.slice(0, 140)}</div>}
+          {dbg.lastError && <div className="text-red-400 break-all text-[9px] mt-1 leading-tight">{dbg.lastError.slice(0, 160)}</div>}
         </div>
       )}
 

@@ -92,6 +92,18 @@ function avgPixelDiff(a: ImageData, b: ImageData): number {
   return count > 0 ? sum / (count * 3) : 0;
 }
 
+// Returns true if the frame is almost entirely black — indicates HEVC not decoded yet
+function isLikelyBlack(imgData: ImageData): boolean {
+  const d = imgData.data;
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < d.length; i += 64) { // sample every 16th pixel (4 channels × 16)
+    sum += d[i] + d[i + 1] + d[i + 2];
+    count++;
+  }
+  return count > 0 && (sum / count) < 8; // avg channel value < 8 ≈ essentially black
+}
+
 export async function extractFrames(
   file: File,
   onProgress?: (current: number, total: number) => void
@@ -125,6 +137,15 @@ export async function extractFrames(
       const H = Math.round(W * (video.videoHeight / Math.max(video.videoWidth, 1)));
       canvas.width = W;
       canvas.height = H;
+
+      // Codec & API support diagnostics (visible in browser console)
+      const hevcSupport = video.canPlayType('video/mp4; codecs="hvc1"') || video.canPlayType('video/mp4; codecs="hev1"');
+      const rVFCSupport = 'requestVideoFrameCallback' in video;
+      console.log(
+        `[viralyze:frames] file="${file.name}" type=${file.type} ` +
+        `${video.videoWidth}×${video.videoHeight} dur=${dur.toFixed(1)}s ` +
+        `hevc=${hevcSupport || 'no'} rVFC=${rVFCSupport}`
+      );
 
       const timestamps = buildTimestamps(dur);
       const total = timestamps.length;
@@ -169,17 +190,63 @@ export async function extractFrames(
 
       video.onseeked = () => {
         clearSeekTimer();
-        ctx.drawImage(video, 0, 0, W, H);
-        const currentImageData = ctx.getImageData(0, 0, W, H);
-        if (prevImageData !== null && avgPixelDiff(prevImageData, currentImageData) > SCENE_DIFF_THRESHOLD) {
-          sceneChanges.push(timestamps[idx]);
+
+        let captureSettled = false;
+        let captureAttempt = 0;
+
+        // Inner timeout — if rVFC/rAF never fires (unsupported codec), skip this frame
+        const captureGiveUp = setTimeout(() => {
+          if (captureSettled) return;
+          captureSettled = true;
+          console.warn(`[viralyze:frames] capture timeout at t=${timestamps[idx].toFixed(1)}s — skipping`);
+          onProgress?.(idx + 1, total);
+          idx++;
+          next();
+        }, 1500);
+
+        const capture = () => {
+          if (captureSettled) return;
+
+          ctx.drawImage(video, 0, 0, W, H);
+          const imgData = ctx.getImageData(0, 0, W, H);
+
+          // HEVC decode latency: if frame is all-black, retry up to 2× with 120ms gap
+          if (isLikelyBlack(imgData) && captureAttempt < 2) {
+            captureAttempt++;
+            console.warn(`[viralyze:frames] black frame at t=${timestamps[idx].toFixed(1)}s — retry ${captureAttempt}`);
+            setTimeout(capture, 120);
+            return;
+          }
+
+          clearTimeout(captureGiveUp);
+          captureSettled = true;
+
+          if (prevImageData !== null && avgPixelDiff(prevImageData, imgData) > SCENE_DIFF_THRESHOLD) {
+            sceneChanges.push(timestamps[idx]);
+          }
+          prevImageData = imgData;
+
+          if (!isLikelyBlack(imgData)) {
+            frames.push(canvas.toDataURL('image/jpeg', 0.85)); // 0.85 for better GPT-4o clarity
+            frameTimestamps.push(timestamps[idx]);
+          } else {
+            console.warn(`[viralyze:frames] undecodable frame at t=${timestamps[idx].toFixed(1)}s — skipping`);
+          }
+
+          onProgress?.(idx + 1, total);
+          idx++;
+          next();
+        };
+
+        // requestVideoFrameCallback fires when the seeked frame is actually rendered by the browser.
+        // This is the correct fix for Chrome/Safari HEVC decode latency after onseeked.
+        // Falls back to requestAnimationFrame for browsers without rVFC.
+        if ('requestVideoFrameCallback' in video) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (video as any).requestVideoFrameCallback(capture);
+        } else {
+          requestAnimationFrame(capture);
         }
-        prevImageData = currentImageData;
-        frames.push(canvas.toDataURL('image/jpeg', 0.72));
-        frameTimestamps.push(timestamps[idx]);
-        onProgress?.(idx + 1, total);
-        idx++;
-        next();
       };
 
       video.onerror = () => {

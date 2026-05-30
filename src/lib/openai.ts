@@ -275,11 +275,15 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, tra
 
   const transcriptSection = buildTranscriptSection(transcriptData);
 
+  const lowFrameWarning = frameCount < 5
+    ? `\n⚠️ VERY FEW FRAMES (${frameCount}): The video format may have caused partial extraction (e.g. HEVC/H.265 on an unsupported browser). Score conservatively — write "Limited visual data" rather than inventing observations. Do NOT give scores of 1 unless you have genuine evidence of failure.\n`
+    : '';
+
   return `You are analyzing a ${dur}-second short-form video for ${platformStr}.
 You have ${frameCount} extracted frames shown below — these are your ONLY source of truth.
 ${context.niche ? `Niche: ${context.niche}` : ''}
 ${goalsStr ? `Creator goals: ${goalsStr}` : ''}
-
+${lowFrameWarning}
 FRAMES (in exact timestamp order):
 ${frameDescriptions.join('\n')}
 

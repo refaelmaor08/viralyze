@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (frameData.frames.length < 5) {
+      console.warn(`[viralyze:analyze] LOW FRAME COUNT: ${frameData.frames.length} frames — video format may be unsupported (HEVC?) or extraction timed out`);
+    }
+
     if (!context?.platforms?.length) {
       return NextResponse.json({ error: 'יש לבחור לפחות פלטפורמה אחת' }, { status: 400 });
     }
