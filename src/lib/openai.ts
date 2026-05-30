@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -147,7 +147,64 @@ function formatSec(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext): string {
+function buildTranscriptSection(t: TranscriptData | null | undefined): string {
+  if (!t) return '';
+
+  if (!t.hasSpeech) {
+    return `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRANSCRIPT: NO SPEECH DETECTED
+No speech was detected in this video. The video appears to be silent or music/ambient only.
+▸ Base ALL analysis on what you can see in the frames.
+▸ Hook scoring: based purely on Frame 1 visual content (no speech bonus possible).
+▸ CTA scoring: if no visible text CTA in frames, score low.
+▸ In Hebrew output: include this exact sentence verbatim in "executiveSummary":
+  "אין דיבור בסרטון, לכן הניתוח מבוסס בעיקר על ויזואליות וקצב."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  }
+
+  const wpmNote =
+    t.speakingSpeedWpm < 80 ? 'very slow — energy likely feels low, viewer may disengage' :
+    t.speakingSpeedWpm < 110 ? 'slow — may feel calm or under-energized' :
+    t.speakingSpeedWpm > 200 ? 'very fast — may be hard to follow' :
+    t.speakingSpeedWpm > 160 ? 'fast — energetic delivery' :
+    'normal pace';
+
+  const silenceLines = t.silencePeriods.length === 0
+    ? 'none detected'
+    : t.silencePeriods.map(
+        (s) => `${s.start.toFixed(1)}s–${s.end.toFixed(1)}s (${(s.end - s.start).toFixed(1)}s gap)`
+      ).join(', ');
+
+  const longSilences = t.silencePeriods.filter((s) => s.end - s.start > 3);
+  const slowSpeech = t.speakingSpeedWpm > 0 && t.speakingSpeedWpm < 80;
+
+  const ctaNote = t.ctaWords
+    ? `"${t.ctaWords}" — CTA language present`
+    : 'no speech in final section — CTA likely absent or text-only';
+
+  return `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRANSCRIPT DATA (Whisper speech recognition — use as evidence):
+- Language detected: ${t.language}
+- Full transcript: "${t.transcript.slice(0, 800)}${t.transcript.length > 800 ? '…' : ''}"
+- First 3s speech (hook zone): "${t.hookWords || 'NO SPEECH in first 3 seconds'}"
+- Final 20% speech (CTA zone): ${ctaNote}
+- Speaking speed: ${t.speakingSpeedWpm} WPM — ${wpmNote}
+- Silence periods: ${silenceLines}
+${longSilences.length > 0 ? `▸ LONG SILENCE WARNING: ${longSilences.map((s) => `${(s.end - s.start).toFixed(1)}s at ${s.start.toFixed(1)}s`).join(', ')} — viewers likely disengage here` : ''}
+${slowSpeech ? `▸ SLOW SPEECH WARNING: ${t.speakingSpeedWpm} WPM is below 80 — note this in pacingIssues` : ''}
+
+RULE 5 — TRANSCRIPT EVIDENCE (mandatory):
+▸ hookStrength: if first 3s had speech "${t.hookWords || 'NONE'}" — does this hook pull the viewer in?
+▸ If hookWords is empty: penalize hookStrength (viewer hears nothing in the critical first 3 seconds)
+▸ pacingIssues: cite any detected silence periods by name (e.g. "1.5s silence at 6.0s")
+▸ If no CTA words detected: explicitly note "אין CTA ברור" or "no clear CTA" in weaknesses
+▸ Speaking speed ${t.speakingSpeedWpm} WPM must inform pacing score — do not contradict this measured value
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null): string {
   const dur = Math.round(frameData.duration);
   const durFormatted = formatSec(dur);
   const platformStr = (context.platforms ?? [])
@@ -155,33 +212,61 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext): st
     .join(', ') || 'Instagram Reels';
   const frameCount = frameData.frames.length;
 
-  // Evenly-spaced frame timestamps — all guaranteed ≤ dur
-  const step = frameCount > 1 ? dur / (frameCount - 1) : dur;
-  const frameTimestamps = Array.from({ length: frameCount }, (_, i) =>
-    Math.max(0.1, Math.min(i === 0 ? 0.3 : parseFloat((i * step).toFixed(1)), dur))
-  );
+  // Use real measured timestamps if available, fall back to evenly-spaced
+  const frameTimestamps: number[] = frameData.frameTimestamps.length === frameCount
+    ? frameData.frameTimestamps
+    : Array.from({ length: frameCount }, (_, i) => {
+        const step = frameCount > 1 ? dur / (frameCount - 1) : dur;
+        return Math.max(0.1, Math.min(i === 0 ? 0.3 : parseFloat((i * step).toFixed(1)), dur));
+      });
 
   const frameDescriptions = frameTimestamps.map((t, i) => {
+    const hookZone = t <= 3.0;
     const label =
-      i === 0 ? `Opening frame (~0.3s)` :
-      i === frameCount - 1 ? `Final frame (~${Math.round(t)}s)` :
-      `Frame ${i + 1} (~${Math.round(t)}s)`;
+      i === 0 ? `Opening frame (${t}s — first impression)` :
+      hookZone ? `Frame ${i + 1} (${t}s — hook zone)` :
+      i === frameCount - 1 ? `Final frame (~${t}s)` :
+      `Frame ${i + 1} (~${t}s)`;
     return `  Frame ${i + 1}: ${label}`;
   });
+
+  // Real measured signals section
+  const sceneCount = frameData.sceneChanges.length;
+  const sceneList = sceneCount > 0
+    ? frameData.sceneChanges.map((t) => `${t}s`).join(', ')
+    : 'none detected';
+  const pacingNote =
+    frameData.cutsPerSecond < 0.15
+      ? 'Very slow editing — little visual variation between frames'
+      : frameData.cutsPerSecond > 0.5
+      ? 'Fast editing — frequent scene changes detected'
+      : 'Medium editing pace';
 
   const contextualInstructions = buildContextualInstructions(context);
   const goalsStr = (context.goals && context.goals.length > 0)
     ? context.goals.map((g) => goalLabels[g] || g).join(', ')
     : '';
 
+  const transcriptSection = buildTranscriptSection(transcriptData);
+
   return `You are analyzing a ${dur}-second short-form video for ${platformStr}.
 You have ${frameCount} extracted frames shown below — these are your ONLY source of truth.
 ${context.niche ? `Niche: ${context.niche}` : ''}
 ${goalsStr ? `Creator goals: ${goalsStr}` : ''}
 
-FRAMES:
+FRAMES (in exact timestamp order):
 ${frameDescriptions.join('\n')}
 
+MEASURED VIDEO SIGNALS (extracted client-side before AI analysis — use these exact values):
+- Duration: ${dur}s
+- Frames analyzed: ${frameCount}
+- Hook zone coverage: frames 1–${frameTimestamps.filter((t) => t <= 3.0).length} cover the critical first 3 seconds at 0.25s intervals
+- Scene changes detected: ${sceneCount} (at: ${sceneList})
+- Editing pace: ${frameData.editingPace} (${frameData.cutsPerSecond.toFixed(2)} cuts/sec) — ${pacingNote}
+
+When scoring "pacing": base it on the measured ${frameData.editingPace} pace (${frameData.cutsPerSecond.toFixed(2)} cuts/sec). Do not contradict these measurements.
+When scoring "hookStrength": you have dense frame coverage of the first 3 seconds — describe exactly what you see in those frames.
+${transcriptSection}
 ${contextualInstructions ? `CONSTRAINTS:\n${contextualInstructions}\n` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 1 — DURATION (ABSOLUTE, NO EXCEPTIONS)
@@ -419,10 +504,11 @@ Rules for topMismatches:
 
 export async function analyzeVideo(
   frameData: VideoFrameData,
-  context: SimpleVideoContext
+  context: SimpleVideoContext,
+  transcriptData?: TranscriptData | null
 ): Promise<AnalysisResult> {
   const content: ChatCompletionContentPart[] = [
-    { type: 'text', text: buildPrompt(frameData, context) },
+    { type: 'text', text: buildPrompt(frameData, context, transcriptData) },
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo } from '@/lib/aiProvider';
-import { SimpleVideoContext, VideoFrameData } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData } from '@/types';
 
 export const maxDuration = 120;
 
@@ -16,14 +16,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: { frameData: VideoFrameData; context: SimpleVideoContext };
+    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { frameData, context } = body;
+    const { frameData, context, transcriptData } = body;
 
     if (!frameData?.frames) {
       return NextResponse.json(
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'יש לבחור לפחות פלטפורמה אחת' }, { status: 400 });
     }
 
-    const result = await analyzeVideo(frameData, context);
+    const result = await analyzeVideo(frameData, context, transcriptData ?? null);
     return NextResponse.json(result);
   } catch (error) {
     const isDev = process.env.NODE_ENV === 'development';

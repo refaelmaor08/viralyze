@@ -151,6 +151,11 @@ export interface VideoFrameData {
   duration: number;
   width: number;
   height: number;
+  // Phase 1: real measured video signals
+  frameTimestamps: number[];                       // exact second for each frame
+  sceneChanges: number[];                          // seconds where a visual cut was detected
+  editingPace: 'slow' | 'medium' | 'fast';        // derived from cuts/sec
+  cutsPerSecond: number;                           // raw cuts-per-second rate
 }
 
 // ─── Recommendation Engine (Stage 6) ──────────────────────────────────────────
@@ -309,4 +314,28 @@ export interface CreatorAssistantResponse {
   ideas: CreatorIdea[];
   viralAngles: string[];
   thumbnailConcepts: string[];
+}
+
+// ─── Transcript & Audio Analysis (Phase 2) ────────────────────────────────────
+
+export interface TranscriptWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+export interface SilencePeriod {
+  start: number;
+  end: number;
+}
+
+export interface TranscriptData {
+  transcript: string;
+  language: string;
+  words: TranscriptWord[];
+  silencePeriods: SilencePeriod[];
+  speakingSpeedWpm: number;
+  hookWords: string;    // words spoken in first 3 seconds
+  ctaWords: string;     // words spoken in final 20% of video
+  hasSpeech: boolean;
 }

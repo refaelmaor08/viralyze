@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData, TranscriptData } from '@/types';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
@@ -42,6 +42,7 @@ function AnalyzeContent() {
   const [debugInfo, setDebugInfo] = useState<{ fingerprint: string; duration: number; cacheHit: boolean; aiMode: string } | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
+  const audioBlobRef = useRef<Blob | null>(null);
 
   const { user, plan, remainingAnalyses } = useAuth();
   const isPaid = plan.id !== 'free';
@@ -106,12 +107,30 @@ function AnalyzeContent() {
         video.onerror = () => { URL.revokeObjectURL(url); res(); };
       });
 
-      const frames = await extractFrames(selectedFile, (current, total) => {
-        setFrameProgress({ current, total });
-      });
+      // Run frame extraction and audio extraction in parallel
+      const { extractAudio } = await import('@/lib/audioExtraction');
+      const [extracted] = await Promise.all([
+        extractFrames(selectedFile, (current, total) => {
+          setFrameProgress({ current, total });
+        }),
+        extractAudio(selectedFile).then((blob) => {
+          audioBlobRef.current = blob;
+        }).catch(() => {
+          audioBlobRef.current = null;
+        }),
+      ]);
 
       clearSafetyTimer();
-      setFrameDataRef({ frames, duration: meta.duration, width: meta.width, height: meta.height });
+      setFrameDataRef({
+        frames: extracted.frames,
+        frameTimestamps: extracted.frameTimestamps,
+        sceneChanges: extracted.sceneChanges,
+        editingPace: extracted.editingPace,
+        cutsPerSecond: extracted.cutsPerSecond,
+        duration: meta.duration,
+        width: meta.width,
+        height: meta.height,
+      });
       setFramesReady(true);
     } catch (err) {
       console.error('Frame extraction failed:', err);
@@ -192,6 +211,7 @@ function AnalyzeContent() {
     setFrameProgress(null);
     setThumbnailUrl(null);
     setDurationError('');
+    audioBlobRef.current = null;
   }, [clearSafetyTimer]);
 
   const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && (IS_UNLIMITED || remainingAnalyses > 0);
@@ -249,13 +269,41 @@ function AnalyzeContent() {
         return;
       }
 
-      const finalFrameData: VideoFrameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
+      const finalFrameData: VideoFrameData = frameDataRef || {
+        frames: [],
+        duration: 0,
+        width: 0,
+        height: 0,
+        frameTimestamps: [],
+        sceneChanges: [],
+        editingPace: 'slow',
+        cutsPerSecond: 0,
+      };
+
+      // Transcribe audio if available (runs during the scanning screen)
+      let transcriptData: TranscriptData | null = null;
+      if (audioBlobRef.current) {
+        try {
+          const audioForm = new FormData();
+          audioForm.append('audio', audioBlobRef.current, 'audio.wav');
+          const transcribeRes = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: audioForm,
+          });
+          if (transcribeRes.ok) {
+            transcriptData = await transcribeRes.json() as TranscriptData;
+          }
+        } catch {
+          // Transcription failure is non-fatal — continue with frames-only analysis
+        }
+      }
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           frameData: finalFrameData,
+          transcriptData,
           context: {
             platforms: context.platforms ?? ['instagram'],
             language: context.language || 'hebrew',

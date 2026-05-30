@@ -4,6 +4,14 @@ export interface VideoMeta {
   height: number;
 }
 
+export interface ExtractedFrameData {
+  frames: string[];
+  frameTimestamps: number[];
+  sceneChanges: number[];
+  editingPace: 'slow' | 'medium' | 'fast';
+  cutsPerSecond: number;
+}
+
 export async function getVideoMeta(file: File): Promise<VideoMeta> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -29,10 +37,49 @@ export async function getVideoMeta(file: File): Promise<VideoMeta> {
   });
 }
 
+// Dense at start (hook zone), sparse after: 0.25s steps for 0–3s, 1s steps for 3s+
+function buildTimestamps(dur: number): number[] {
+  const timestamps: number[] = [];
+
+  // Hook zone: 0.25s intervals up to 3s (or end of video)
+  const hookEnd = Math.min(3, dur);
+  for (let t = 0.25; t <= hookEnd + 0.001; t += 0.25) {
+    const rounded = parseFloat(t.toFixed(2));
+    if (rounded <= dur) timestamps.push(rounded);
+  }
+
+  // Body: 1s intervals from 4s onwards
+  for (let t = 4; t <= Math.floor(dur); t++) {
+    timestamps.push(t);
+  }
+
+  // Include a frame near the very end if last added frame is far from it
+  const last = timestamps[timestamps.length - 1] ?? 0;
+  const nearEnd = parseFloat((dur - 0.2).toFixed(1));
+  if (nearEnd > last + 0.5 && nearEnd > 0) {
+    timestamps.push(nearEnd);
+  }
+
+  return timestamps.slice(0, 60);
+}
+
+// Compare two raw ImageData buffers — sample every 8th pixel for speed
+function avgPixelDiff(a: ImageData, b: ImageData): number {
+  const d1 = a.data;
+  const d2 = b.data;
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < d1.length; i += 32) { // 32 = 4 channels × 8 pixels
+    sum += Math.abs(d1[i] - d2[i]) + Math.abs(d1[i + 1] - d2[i + 1]) + Math.abs(d1[i + 2] - d2[i + 2]);
+    count++;
+  }
+  return count > 0 ? sum / (count * 3) : 0;
+}
+
 export async function extractFrames(
   file: File,
   onProgress?: (current: number, total: number) => void
-): Promise<string[]> {
+): Promise<ExtractedFrameData> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const canvas = document.createElement('canvas');
@@ -51,39 +98,31 @@ export async function extractFrames(
     video.onloadedmetadata = () => {
       const dur = video.duration;
 
-      // Target width 480px — keeps base64 payload small (~15-30KB/frame)
+      // 480px wide keeps base64 payload ~15-30KB per frame
       const W = 480;
       const H = Math.round(W * (video.videoHeight / Math.max(video.videoWidth, 1)));
       canvas.width = W;
       canvas.height = H;
 
-      // Strategic timestamps covering the whole video
-      // Frame 1 — very first moment (hook quality)
-      // Frame 2 — ~3s (critical TikTok drop-off point)
-      // Frame 3-5 — evenly spread middle
-      // Frame 6 — near end (CTA / closing)
-      const raw = [
-        0.3,
-        Math.min(3, dur * 0.12),
-        dur * 0.3,
-        dur * 0.5,
-        dur * 0.7,
-        Math.max(0, dur - 1),
-      ];
-
-      // Clamp and deduplicate
-      const timestamps = raw
-        .map((t) => Math.max(0.1, Math.min(t, dur - 0.1)))
-        .filter((t, i, arr) => arr.indexOf(t) === i);
-
+      const timestamps = buildTimestamps(dur);
       const total = timestamps.length;
       const frames: string[] = [];
+      const frameTimestamps: number[] = [];
+      const sceneChanges: number[] = [];
+      let prevImageData: ImageData | null = null;
       let idx = 0;
+
+      const SCENE_DIFF_THRESHOLD = 30;
 
       const next = () => {
         if (idx >= total) {
           URL.revokeObjectURL(url);
-          resolve(frames);
+
+          const cutsPerSecond = dur > 0 ? parseFloat((sceneChanges.length / dur).toFixed(3)) : 0;
+          const editingPace: 'slow' | 'medium' | 'fast' =
+            cutsPerSecond > 0.5 ? 'fast' : cutsPerSecond > 0.15 ? 'medium' : 'slow';
+
+          resolve({ frames, frameTimestamps, sceneChanges, editingPace, cutsPerSecond });
           return;
         }
         video.currentTime = timestamps[idx];
@@ -91,7 +130,16 @@ export async function extractFrames(
 
       video.onseeked = () => {
         ctx.drawImage(video, 0, 0, W, H);
+
+        // Pixel diff scene detection — must happen before toDataURL (no quality loss)
+        const currentImageData = ctx.getImageData(0, 0, W, H);
+        if (prevImageData !== null && avgPixelDiff(prevImageData, currentImageData) > SCENE_DIFF_THRESHOLD) {
+          sceneChanges.push(timestamps[idx]);
+        }
+        prevImageData = currentImageData;
+
         frames.push(canvas.toDataURL('image/jpeg', 0.72));
+        frameTimestamps.push(timestamps[idx]);
         onProgress?.(idx + 1, total);
         idx++;
         next();
