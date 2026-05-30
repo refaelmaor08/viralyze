@@ -88,13 +88,7 @@ const goalLabels: Record<string, string> = {
 function buildContextualInstructions(context: SimpleVideoContext): string {
   const parts: string[] = [];
 
-  // Content type — HINT ONLY. Analyze what you actually see, not what it was intended to be.
-  if (context.contentType && context.contentType !== 'other') {
-    const label = contentTypeLabels[context.contentType] || context.contentType;
-    parts.push(`Creator says this is: "${label}" — this is context only. Analyze based on what you actually SEE in the frames, not on this label.`);
-  }
-
-  // Editability constraints — these are real constraints
+  // Editability constraints
   if (context.editability === 'final') {
     parts.push(`EDITING CONSTRAINT (final version): Only suggest post-production changes — caption/subtitle edits, cover frame, pacing cuts, music change, text overlays. NO suggestions that require re-shooting.`);
   } else if (context.editability === 'editing-only') {
@@ -119,6 +113,34 @@ function buildContextualInstructions(context: SimpleVideoContext): string {
   return parts.join('\n\n');
 }
 
+// Returns true if text contains a timestamp (seconds or M:SS) referencing a time > maxSec
+function containsImpossibleTimestamp(text: string, maxSec: number): boolean {
+  if (!text) return false;
+  // "M:SS" or "M:SS-M:SS"
+  const mmss = /\b(\d+):(\d{2})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = mmss.exec(text)) !== null) {
+    if (parseInt(m[1]) * 60 + parseInt(m[2]) > maxSec) return true;
+  }
+  // "N seconds" / "N שניות" / "N-M seconds" / "N-M שניות"
+  const secRef = /\b(\d+)(?:\s*[-–]\s*(\d+))?\s*(?:seconds?|שניות?|שנייה)\b/gi;
+  while ((m = secRef.exec(text)) !== null) {
+    if (parseInt(m[1]) > maxSec) return true;
+    if (m[2] && parseInt(m[2]) > maxSec) return true;
+  }
+  // Standalone large numbers that look like timestamps in a time-range context (e.g. "20-35")
+  const range = /\b(\d{2,3})\s*[-–]\s*(\d{2,3})\b/g;
+  while ((m = range.exec(text)) !== null) {
+    if (parseInt(m[1]) > maxSec || parseInt(m[2]) > maxSec) return true;
+  }
+  return false;
+}
+
+function filterStrings(arr: unknown[], maxSec: number): string[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(String).filter((s) => !containsImpossibleTimestamp(s, maxSec));
+}
+
 function formatSec(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
@@ -132,80 +154,69 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext): st
     .map((p) => platformLabels[p] ?? p)
     .join(', ') || 'Instagram Reels';
   const frameCount = frameData.frames.length;
-  const contentTypeStr = context.contentType ? contentTypeLabels[context.contentType] : 'General Content';
 
-  const frameTimestamps = [0.3, 3, dur * 0.3, dur * 0.5, dur * 0.7, dur - 1]
-    .map((t) => Math.max(0.1, Math.min(t, dur - 0.1)))
-    .slice(0, frameCount);
+  // Evenly-spaced frame timestamps — all guaranteed ≤ dur
+  const step = frameCount > 1 ? dur / (frameCount - 1) : dur;
+  const frameTimestamps = Array.from({ length: frameCount }, (_, i) =>
+    Math.max(0.1, Math.min(i === 0 ? 0.3 : parseFloat((i * step).toFixed(1)), dur))
+  );
 
   const frameDescriptions = frameTimestamps.map((t, i) => {
     const label =
-      i === 0 ? 'Opening/Hook (0.3s)' :
-      i === 1 ? `3-second retention point` :
-      i === frameCount - 1 ? `Near end (~${Math.round(t)}s)` :
-      `~${Math.round(t)}s`;
-    return `Frame ${i + 1}: ${label}`;
+      i === 0 ? `Opening frame (~0.3s)` :
+      i === frameCount - 1 ? `Final frame (~${Math.round(t)}s)` :
+      `Frame ${i + 1} (~${Math.round(t)}s)`;
+    return `  Frame ${i + 1}: ${label}`;
   });
 
   const contextualInstructions = buildContextualInstructions(context);
-
   const goalsStr = (context.goals && context.goals.length > 0)
     ? context.goals.map((g) => goalLabels[g] || g).join(', ')
     : '';
 
-  return `Analyze this ${dur}-second video. You are viewing ${frameCount} extracted frames:
+  return `You are analyzing a ${dur}-second short-form video for ${platformStr}.
+You have ${frameCount} extracted frames shown below — these are your ONLY source of truth.
+${context.niche ? `Niche: ${context.niche}` : ''}
+${goalsStr ? `Creator goals: ${goalsStr}` : ''}
 
+FRAMES:
 ${frameDescriptions.join('\n')}
 
-Platform(s): ${platformStr}
-Content Type: ${contentTypeStr}
-Video duration: ${dur} seconds (${durFormatted})
-${context.niche ? `Niche: ${context.niche}` : ''}
-${goalsStr ? `Goals: ${goalsStr}` : ''}
+${contextualInstructions ? `CONSTRAINTS:\n${contextualInstructions}\n` : ''}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 1 — DURATION (ABSOLUTE, NO EXCEPTIONS)
+This video is ${dur} seconds long. It ends at ${durFormatted}.
+▸ In "fixMyVideo": every timestamp MUST start and end before ${durFormatted}.
+▸ In "timeline": every "seconds" value MUST be ≤ ${dur}. The last entry must be ≤ ${dur}.
+▸ In ALL text fields: NEVER write any number > ${dur} in a seconds/time context.
+▸ Forbidden examples for this video: "20-35 seconds", "0:22", "${dur + 5} seconds", "after second ${dur + 1}".
+▸ If you cannot pinpoint the exact second from the frames, describe it as "near the opening" / "mid-video" / "near the end" — no invented numbers.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 2 — NO CONTENT TYPE LABELS
+Do NOT classify or label this video as an ad, UGC, organic content, showcase, etc.
+Analyze purely what you SEE — lighting, motion, text, energy, composition. Nothing else.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 3 — FRAME EVIDENCE ONLY
+Every strength and weakness MUST start with the frame it is based on (e.g., "Frame 1:" or "Frame 3:").
+If you cannot observe something directly in the frames, write "Not enough evidence from the frames."
+Do NOT invent observations. Do NOT assume what happens between frames.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 4 — STRICT HOOK SCORING
+"hookStrength" is determined ONLY by Frame 1 (the opening ~0.3s):
+• 80–100: Fast movement OR strong visible text hook OR clear emotion/tension — forces scroll-stop
+• 60–79: Subject visible, moderate energy, but no strong curiosity or tension
+• 40–59: Static person talking to camera, no text, no movement visible
+• 1–39: Dark, blurry, empty, or unclear — viewer scrolls instantly
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-${contextualInstructions ? `\n=== CONTEXTUAL ANALYSIS RULES ===\n${contextualInstructions}\n=== END RULES ===\n` : ''}
-
-═══════════════════════════════════════
-CRITICAL DURATION CONSTRAINT — MUST OBEY
-This video is EXACTLY ${dur} seconds long (${durFormatted}).
-• Every timestamp in "fixMyVideo" MUST be between 0:00 and ${durFormatted}. NEVER write a timestamp beyond ${durFormatted}.
-• Every "seconds" value in "timeline" MUST be between 0 and ${dur}. NEVER exceed ${dur}.
-• If you want to say "near the end", use second ${Math.max(1, dur - 2)} or earlier.
-• Timestamps referencing 0:${dur + 5} or any second > ${dur} are FORBIDDEN.
-═══════════════════════════════════════
-
-═══════════════════════════════════════
-STRICT HOOK SCORING — MUST APPLY
-Score "hookStrength" based ONLY on Frame 1 (the opening ~0.3s frame):
-• 80–100: Frame 1 shows fast movement OR strong visible text hook OR clear emotion/tension OR compelling subject — something that FORCES the viewer to stop scrolling
-• 60–79: Frame 1 has some interest (subject visible, moderate energy) but lacks a clear tension or question
-• 40–59: Frame 1 shows a person talking to camera with no text, no strong expression, no movement
-• 1–39: Frame 1 is dark, static, blurry, empty, or visually uninteresting — viewer will scroll immediately
-DO NOT award hookStrength > 60 unless Frame 1 is genuinely compelling.
-═══════════════════════════════════════
-
-═══════════════════════════════════════
-EVIDENCE RULE — NO GENERIC FEEDBACK ALLOWED
-Every item in feedback.strengths and feedback.weaknesses MUST:
-1. Reference a specific frame number (e.g. "Frame 1", "Frame 3") OR a specific time range
-2. Describe what you ACTUALLY SEE in that frame
-3. Explain the psychological impact on the viewer
-
-FORBIDDEN (too generic): "ההוק טוב" / "חסרה אנרגיה" / "Good hook" / "Low energy"
-REQUIRED (specific): "Frame 1 (0.3s): אין טקסט, הפנים לא ברורות, אין תנועה — הצופה לא מקבל שום סיבה להישאר בתוך 2 שניות"
-REQUIRED (specific): "Frame 2 (3s): תנועת גוף מהירה ותאורה טובה — מרגיש אנרגטי ומושך תשומת לב"
-═══════════════════════════════════════
-
-VISUAL ANALYSIS TASK:
-For each frame you see, note:
-- Lighting quality
-- Energy, expression, body language
-- Visible text/subtitles
-- Scene variation vs. previous frame
-- Production quality
-- Whether it looks organic or promotional
-
-Then synthesize into the full JSON analysis below.
+ANALYZE THESE 7 AREAS based on what you see in the frames:
+1. Hook strength — is Frame 1 scroll-stopping? Movement, text, emotion, subject clarity?
+2. Pacing — variation between frames? Dead spots where nothing changes?
+3. Retention — would a viewer stay? Why or why not?
+4. Visual quality — lighting, stability, sharpness, composition
+5. Audio/captions — are subtitles or text overlays visible in the frames? Readable?
+6. Viral potential — is there a shareable moment? Is it scroll-stopping?
+7. Specific problems — exact issues visible in the frames that hurt performance
 
 Return VALID JSON in this exact structure:
 {
@@ -217,56 +228,63 @@ Return VALID JSON in this exact structure:
     "rewatchPotential": <1-100>,
     "shareability": <1-100>,
     "commentPotential": <1-100>,
-    "hookStrength": <1-100 — apply STRICT HOOK SCORING RULE from above>,
+    "hookStrength": <1-100 per RULE 4 above>,
     "pacing": <1-100>,
     "visualStimulation": <1-100>
   },
   "feedback": {
-    "strengths": [<3-5 frame-specific strengths with evidence from frames + psychological reasoning>],
-    "weaknesses": [<3-6 frame-specific weaknesses with evidence from frames — NO GENERIC ITEMS>],
-    "attentionDropPoints": [<where viewers likely lose interest — reference specific seconds>],
-    "pacingIssues": [<specific pacing problems if any — reference specific frames>],
-    "genericElements": [<what feels generic or templated>],
-    "strongElements": [<what genuinely works visually>],
-    "whatToCut": [<specific things to cut with timestamps within ${dur}s>],
-    "immediateChanges": [<top 3 highest-impact changes to make RIGHT NOW>]
+    "strengths": [
+      "<MUST start with 'Frame N:' — specific visual observation + psychological impact>",
+      "..."
+    ],
+    "weaknesses": [
+      "<MUST start with 'Frame N:' — specific visual observation + why it hurts performance>",
+      "..."
+    ],
+    "attentionDropPoints": [
+      "<describe WHERE in the video attention likely drops — use 'early', 'mid-video', 'near the end', or a frame number. NEVER invent a timestamp beyond ${dur}s>"
+    ],
+    "pacingIssues": ["<frame-referenced pacing observations only>"],
+    "genericElements": ["<what feels templated or generic, based on frames>"],
+    "strongElements": ["<what genuinely works, frame-referenced>"],
+    "whatToCut": ["<specific frame-referenced edit suggestions — no invented timestamps>"],
+    "immediateChanges": ["<top 3 most impactful changes RIGHT NOW>"]
   },
   "suggestions": {
-    "betterHooks": [<3 specific alternative opening hooks>],
-    "betterCaptions": [<2-3 caption ideas>],
-    "betterCTAs": [<2-3 CTA variations>],
+    "betterHooks": ["<3 specific alternative opening hooks>"],
+    "betterCaptions": ["<2-3 caption ideas>"],
+    "betterCTAs": ["<2-3 CTA variations>"],
     "storytellingDirection": "<specific narrative direction>",
-    "betterOpeningLines": [<3 alternative opening lines>],
-    "emotionalTriggers": [<emotional triggers to add>],
-    "thumbnailIdeas": [<2-3 thumbnail concepts>]
+    "betterOpeningLines": ["<3 alternative opening lines>"],
+    "emotionalTriggers": ["<emotional triggers to add>"],
+    "thumbnailIdeas": ["<2-3 thumbnail concepts>"]
   },
   "fixMyVideo": [
     {
-      "timestamp": "<MUST be within 0:00–${durFormatted}, e.g. 0:00-0:03>",
-      "issue": "<specific problem you see in the frames>",
-      "fix": "<concrete fix>",
+      "timestamp": "<M:SS-M:SS format — MUST start before ${durFormatted} — e.g. 0:00-0:03>",
+      "issue": "<specific visual problem from the frames>",
+      "fix": "<concrete action>",
       "type": "<cut|zoom|subtitle|speedup|music|emotion|transition>"
     }
   ],
   "timeline": [
     {
-      "time": "<e.g. 0:02 — MUST be ≤ ${durFormatted}>",
-      "seconds": <float between 0 and ${dur} — NEVER exceed ${dur}>,
+      "time": "<M:SS — auto-reconstructed, just provide seconds below>",
+      "seconds": <number ≥ 0 and ≤ ${dur} — ABSOLUTE MAXIMUM IS ${dur}>,
       "type": "<strong|warning|critical>",
-      "text": "<one short sentence in Hebrew describing what happens at this moment and why it matters>"
+      "text": "<one short sentence about this moment>"
     }
   ],
-  "executiveSummary": "<3-4 sentence honest summary referencing what you actually saw>",
-  "overallVerdict": "<one powerful, honest sentence about this specific video>"
+  "executiveSummary": "<3-4 sentence honest summary based solely on what you saw in the frames>",
+  "overallVerdict": "<one honest sentence about this specific video — no invented timestamps>"
 }
 
-For "timeline": provide 6-12 timestamp entries spread across the FULL 0–${dur}s duration. Use:
-- "strong" = moment that works well (hook, emotional beat, strong visual)
-- "warning" = potential drop-off or weak point
-- "critical" = likely viewer exit point or major problem
-ALL seconds values MUST be ≤ ${dur}.
+Timeline rules:
+- Provide 6–10 entries spread across 0–${dur}s
+- EVERY seconds value must be ≤ ${dur} — this is enforced server-side and any value > ${dur} will be dropped
+- Use frame positions as anchor points, not invented timestamps
 
-Be BRUTALLY HONEST. Reference specific frames and visual observations. Zero generic advice.`;
+Be brutally honest. Reference specific frames. Never mention a time beyond ${dur}s.`;
 }
 
 export async function analyzePerceptionGap(
@@ -427,37 +445,51 @@ export async function analyzeVideo(
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
   const dur = frameData.duration;
+  const durRounded = Math.round(dur);
 
   const clamp = (v: unknown) => Math.max(1, Math.min(100, Math.round(Number(v) || 50)));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scores = raw.scores
-    ? Object.fromEntries(Object.entries(raw.scores).map(([k, v]) => [k, clamp(v)]))
-    : raw.scores;
+    ? Object.fromEntries(Object.entries(raw.scores).map(([k, v]) => [k, clamp(v)])) as any
+    : {} as any;
 
-  // Clamp timeline seconds to actual video duration so AI never reports beyond real end
+  // Clamp timeline seconds to actual duration; reconstruct "time" string from clamped value
   const timeline = Array.isArray(raw.timeline)
     ? raw.timeline
-        .map((t: Record<string, unknown>) => ({
-          ...t,
-          seconds: Math.max(0, Math.min(dur, Number(t.seconds) || 0)),
-        }))
-        .filter((t: Record<string, unknown>) => Number(t.seconds) <= dur)
+        .map((t: Record<string, unknown>) => {
+          const sec = Math.max(0, Math.min(dur, Number(t.seconds) || 0));
+          return { ...t, seconds: sec, time: formatSec(sec) };
+        })
+        .filter((t: Record<string, unknown>) => Number(t.seconds) <= durRounded)
     : [];
 
-  // Drop fixMyVideo entries whose timestamp starts beyond video duration
+  // Drop fixMyVideo entries whose start timestamp exceeds duration
   const fixMyVideo = Array.isArray(raw.fixMyVideo)
     ? raw.fixMyVideo.filter((f: Record<string, unknown>) => {
         const ts = String(f.timestamp || '');
-        const startMatch = ts.match(/^(\d+):(\d{2})/);
-        if (!startMatch) return true;
-        const startSec = parseInt(startMatch[1]) * 60 + parseInt(startMatch[2]);
-        return startSec < dur;
+        const m = ts.match(/^(\d+):(\d{2})/);
+        if (!m) return true;
+        return parseInt(m[1]) * 60 + parseInt(m[2]) < durRounded;
       })
     : [];
+
+  // Sanitize all feedback text arrays — drop any item mentioning a time > dur
+  const fb = raw.feedback ?? {};
+  const feedback = {
+    strengths: filterStrings(fb.strengths, durRounded),
+    weaknesses: filterStrings(fb.weaknesses, durRounded),
+    attentionDropPoints: filterStrings(fb.attentionDropPoints, durRounded),
+    pacingIssues: filterStrings(fb.pacingIssues, durRounded),
+    genericElements: filterStrings(fb.genericElements, durRounded),
+    strongElements: filterStrings(fb.strongElements, durRounded),
+    whatToCut: filterStrings(fb.whatToCut, durRounded),
+    immediateChanges: filterStrings(fb.immediateChanges, durRounded),
+  };
 
   return {
     id: crypto.randomUUID(),
     scores,
-    feedback: raw.feedback,
+    feedback,
     suggestions: raw.suggestions,
     fixMyVideo,
     timeline,
