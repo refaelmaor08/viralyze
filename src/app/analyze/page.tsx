@@ -39,6 +39,7 @@ function AnalyzeContent() {
     language: 'hebrew',
     platforms: ['instagram'],
   });
+  const [debugInfo, setDebugInfo] = useState<{ fingerprint: string; duration: number; cacheHit: boolean; aiMode: string } | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
 
@@ -202,9 +203,23 @@ function AnalyzeContent() {
 
     try {
       const fingerprint = videoFingerprintRef.current;
+      const dur = frameDataRef?.duration ?? 0;
+
+      if (process.env.NODE_ENV === 'development') {
+        setDebugInfo({
+          fingerprint: fingerprint ?? '—',
+          duration: dur,
+          cacheHit: false,
+          aiMode: IS_DEMO ? 'demo' : 'real',
+        });
+      }
+
       if (fingerprint && !IS_DEMO) {
         const cached = getCachedResult(fingerprint);
         if (cached) {
+          if (process.env.NODE_ENV === 'development') {
+            setDebugInfo((prev) => prev ? { ...prev, cacheHit: true } : prev);
+          }
           sessionStorage.setItem('viralyze_result', JSON.stringify(cached));
           sessionStorage.setItem('viralyze_context', JSON.stringify(context));
           router.push(`/results/${cached.id}`);
@@ -600,6 +615,19 @@ function AnalyzeContent() {
         )}
 
       </AnimatePresence>
+
+      {/* Dev-only debug overlay */}
+      {process.env.NODE_ENV === 'development' && debugInfo && (
+        <div className="fixed bottom-4 left-4 z-50 text-[10px] font-mono rounded-xl p-3 space-y-0.5"
+          style={{ background: 'rgba(0,0,0,0.85)', border: '1px solid rgba(212,168,67,0.3)', color: 'rgba(212,168,67,0.8)' }}>
+          <div className="font-bold text-[#D4A843] mb-1">⚙ DEBUG</div>
+          <div>AI Mode: <span className="text-white">{debugInfo.aiMode}</span></div>
+          <div>Duration: <span className="text-white">{Math.round(debugInfo.duration)}s</span></div>
+          <div>Hash: <span className="text-white">{debugInfo.fingerprint.slice(0, 20)}</span></div>
+          <div>Cache: <span className={debugInfo.cacheHit ? 'text-green-400' : 'text-white'}>{debugInfo.cacheHit ? 'HIT ✓' : 'MISS'}</span></div>
+          <div>Real analysis: <span className={debugInfo.aiMode === 'real' ? 'text-green-400' : 'text-orange-400'}>{debugInfo.aiMode === 'real' ? 'YES' : 'NO (demo)'}</span></div>
+        </div>
+      )}
     </div>
   );
 }

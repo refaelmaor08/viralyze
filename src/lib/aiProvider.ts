@@ -24,7 +24,8 @@ import type {
   LanguageSafetyAnalysis,
 } from '@/types';
 
-const AI_MODE = (process.env.AI_MODE ?? 'demo') as 'demo' | 'real';
+// Default to 'real' when OPENAI_API_KEY is present; fall back to 'demo' only when no key configured
+const AI_MODE = (process.env.AI_MODE ?? (process.env.OPENAI_API_KEY ? 'real' : 'demo')) as 'demo' | 'real';
 const AI_PROVIDER = (process.env.AI_PROVIDER ?? 'openai') as 'openai' | 'custom';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
