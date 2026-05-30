@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData, VideoUnderstanding, PerceptionGap, ViewerPsychology, TimelineAnalysis, AdaptiveAnalysis, Recommendations, LanguageSafetyAnalysis } from '@/types';
-import AIScanner from '@/components/analyze/AIScanner';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData } from '@/types';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
@@ -16,14 +15,7 @@ import { formatDurationLimit } from '@/lib/plans';
 import { getVideoFingerprint, getCachedResult, setCachedResult } from '@/lib/videoCache';
 import { UNLIMITED_TEST_MODE as IS_UNLIMITED } from '@/lib/testMode';
 import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
-import UnderstandingResult from '@/components/analyze/UnderstandingResult';
-import PerceptionGapResult from '@/components/analyze/PerceptionGapResult';
-import ViewerPsychologyResult from '@/components/analyze/ViewerPsychologyResult';
-import TimelineResult from '@/components/analyze/TimelineResult';
-import AdaptiveAnalysisResult from '@/components/analyze/AdaptiveAnalysisResult';
-import RecommendationsResult from '@/components/analyze/RecommendationsResult';
-import LanguageSafetyGate from '@/components/analyze/LanguageSafetyGate';
-import LanguageSafetyResult from '@/components/analyze/LanguageSafetyResult';
+import ScanningScreen from '@/components/analyze/ScanningScreen';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
 
@@ -31,7 +23,7 @@ const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader')
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
 const AnalysisHistory = dynamic(() => import('@/components/analyze/AnalysisHistory'), { ssr: false });
 
-type Phase = 'preanalysis' | 'form' | 'understanding' | 'understood' | 'perception' | 'perceived' | 'psychology' | 'psychologized' | 'timeline' | 'timelined' | 'adaptive' | 'adapted' | 'recommending' | 'recommended' | 'lang-gate' | 'lang-checking' | 'lang-checked' | 'analyzing' | 'error';
+type Phase = 'preanalysis' | 'form' | 'scanning' | 'error';
 
 function AnalyzeContent() {
   const router = useRouter();
@@ -47,13 +39,6 @@ function AnalyzeContent() {
     language: 'hebrew',
     platforms: ['instagram'],
   });
-  const [understanding, setUnderstanding] = useState<VideoUnderstanding | null>(null);
-  const [perceptionGap, setPerceptionGap] = useState<PerceptionGap | null>(null);
-  const [viewerPsychology, setViewerPsychology] = useState<ViewerPsychology | null>(null);
-  const [timelineAnalysis, setTimelineAnalysis] = useState<TimelineAnalysis | null>(null);
-  const [adaptiveAnalysis, setAdaptiveAnalysis] = useState<AdaptiveAnalysis | null>(null);
-  const [recommendations, setRecommendations] = useState<Recommendations | null>(null);
-  const [languageSafety, setLanguageSafety] = useState<LanguageSafetyAnalysis | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
 
@@ -172,10 +157,8 @@ function AnalyzeContent() {
       setFramesReady(false);
       setDurationError('');
 
-      // Compute and store fingerprint for this file
       videoFingerprintRef.current = getVideoFingerprint(selectedFile);
 
-      // Skip duration check in unlimited test mode
       if (!IS_UNLIMITED) {
         const ok = await checkDuration(selectedFile);
         if (!ok) {
@@ -212,13 +195,12 @@ function AnalyzeContent() {
 
   const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && (IS_UNLIMITED || remainingAnalyses > 0);
 
-  // Stage 2: full deep analysis
-  const runFullAnalysis = useCallback(async () => {
-    setPhase('analyzing');
+  const handleAnalyze = useCallback(async () => {
+    if (!canAnalyze) return;
     setError('');
+    setPhase('scanning');
 
     try {
-      // ── Cache hit: same video already analysed this session ──
       const fingerprint = videoFingerprintRef.current;
       if (fingerprint && !IS_DEMO) {
         const cached = getCachedResult(fingerprint);
@@ -277,7 +259,6 @@ function AnalyzeContent() {
 
       const result = data as AnalysisResult;
 
-      // Cache result for this fingerprint so same video reuses same scores
       if (fingerprint) setCachedResult(fingerprint, result);
 
       sessionStorage.setItem('viralyze_result', JSON.stringify(result));
@@ -296,301 +277,7 @@ function AnalyzeContent() {
       setError(msg);
       setPhase('error');
     }
-  }, [context, file, frameDataRef, thumbnailUrl, user, plan, router]);
-
-  // Stage 2: perception gap — called after understanding result
-  const handlePerception = useCallback(async () => {
-    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
-
-    // Skip perception in demo mode or if no frames / no understanding
-    if (IS_DEMO || !frameData.frames.length || !understanding) {
-      await runFullAnalysis();
-      return;
-    }
-
-    setPhase('perception');
-
-    try {
-      const res = await fetch('/api/perception', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frameData,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
-          understanding,
-        }),
-      });
-
-      if (res.ok) {
-        const data: PerceptionGap = await res.json();
-        setPerceptionGap(data);
-        setPhase('perceived');
-      } else {
-        await runFullAnalysis();
-      }
-    } catch {
-      await runFullAnalysis();
-    }
-  }, [context, frameDataRef, understanding, runFullAnalysis]);
-
-  // Stage 5: adaptive — called after timeline result
-  const handleAdaptive = useCallback(async () => {
-    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
-
-    if (IS_DEMO || !frameData.frames.length || !understanding) {
-      await runFullAnalysis();
-      return;
-    }
-
-    setPhase('adaptive');
-
-    try {
-      const res = await fetch('/api/adaptive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frameData,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
-          understanding,
-        }),
-      });
-
-      if (res.ok) {
-        const data: AdaptiveAnalysis = await res.json();
-        setAdaptiveAnalysis(data);
-        setPhase('adapted');
-      } else {
-        await runFullAnalysis();
-      }
-    } catch {
-      await runFullAnalysis();
-    }
-  }, [context, frameDataRef, understanding, runFullAnalysis]);
-
-  // Stage 6: recommendations — called after adaptive result
-  const handleRecommendations = useCallback(async () => {
-    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
-
-    if (IS_DEMO || !frameData.frames.length || !understanding) {
-      await runFullAnalysis();
-      return;
-    }
-
-    setPhase('recommending');
-
-    try {
-      const res = await fetch('/api/recommendations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frameData,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
-          understanding,
-          perceptionGap,
-          viewerPsychology,
-          timelineAnalysis,
-          adaptiveAnalysis,
-        }),
-      });
-
-      if (res.ok) {
-        const data: Recommendations = await res.json();
-        setRecommendations(data);
-        setPhase('recommended');
-      } else {
-        await runFullAnalysis();
-      }
-    } catch {
-      await runFullAnalysis();
-    }
-  }, [context, frameDataRef, understanding, perceptionGap, viewerPsychology, timelineAnalysis, adaptiveAnalysis, runFullAnalysis]);
-
-  // Optional language safety gate — shown after recommendations (or in demo mode after form)
-  const handleLangGate = useCallback(() => {
-    setPhase('lang-gate');
-  }, []);
-
-  const handleLanguageCheck = useCallback(async (transcript: string) => {
-    setPhase('lang-checking');
-    try {
-      const res = await fetch('/api/language-safety', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
-          understanding,
-        }),
-      });
-      if (res.ok) {
-        const data: LanguageSafetyAnalysis = await res.json();
-        setLanguageSafety(data);
-        setPhase('lang-checked');
-      } else {
-        await runFullAnalysis();
-      }
-    } catch {
-      await runFullAnalysis();
-    }
-  }, [context, understanding, runFullAnalysis]);
-
-  // Stage 4: timeline — called after viewer psychology result
-  const handleTimeline = useCallback(async () => {
-    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
-
-    if (IS_DEMO || !frameData.frames.length || !understanding) {
-      await runFullAnalysis();
-      return;
-    }
-
-    setPhase('timeline');
-
-    try {
-      const res = await fetch('/api/timeline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frameData,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
-          understanding,
-        }),
-      });
-
-      if (res.ok) {
-        const data: TimelineAnalysis = await res.json();
-        setTimelineAnalysis(data);
-        setPhase('timelined');
-      } else {
-        await runFullAnalysis();
-      }
-    } catch {
-      await runFullAnalysis();
-    }
-  }, [context, frameDataRef, understanding, runFullAnalysis]);
-
-  // Stage 3: viewer psychology — called after perception gap result
-  const handlePsychology = useCallback(async () => {
-    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
-
-    if (IS_DEMO || !frameData.frames.length || !understanding) {
-      await runFullAnalysis();
-      return;
-    }
-
-    setPhase('psychology');
-
-    try {
-      const res = await fetch('/api/psychology', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frameData,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
-          understanding,
-        }),
-      });
-
-      if (res.ok) {
-        const data: ViewerPsychology = await res.json();
-        setViewerPsychology(data);
-        setPhase('psychologized');
-      } else {
-        await runFullAnalysis();
-      }
-    } catch {
-      await runFullAnalysis();
-    }
-  }, [context, frameDataRef, understanding, runFullAnalysis]);
-
-  // Stage 1: video understanding, then show result before Stage 2
-  const handleAnalyze = async () => {
-    if (!canAnalyze) return;
-    setError('');
-
-    const frameData = frameDataRef || { frames: [], duration: 0, width: 0, height: 0 };
-
-    // Skip understanding in demo mode or if no frames — go to lang gate instead
-    if (IS_DEMO || !frameData.frames.length) {
-      handleLangGate();
-      return;
-    }
-
-    setPhase('understanding');
-
-    try {
-      const res = await fetch('/api/understand', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ frameData, language: context.language || 'hebrew' }),
-      });
-
-      if (res.ok) {
-        const data: VideoUnderstanding = await res.json();
-        setUnderstanding(data);
-        setPhase('understood');
-      } else {
-        // Understanding failed — skip to full analysis silently
-        await runFullAnalysis();
-      }
-    } catch {
-      // Network error — skip to full analysis silently
-      await runFullAnalysis();
-    }
-  };
+  }, [canAnalyze, context, file, frameDataRef, thumbnailUrl, user, plan, router]);
 
   return (
     <div className="min-h-screen bg-[#080808]">
@@ -797,7 +484,7 @@ function AnalyzeContent() {
               )}
             </AnimatePresence>
 
-            {/* Platform picker — shown only when file selected, no duration error, and context has no platforms set */}
+            {/* Platform picker */}
             <AnimatePresence>
               {file && !durationError && !isPaid && (
                 <motion.div
@@ -867,460 +554,16 @@ function AnalyzeContent() {
           </motion.div>
         )}
 
-        {/* Understanding — loading state */}
-        {phase === 'understanding' && (
+        {/* Scanning — full analysis running in background */}
+        {phase === 'scanning' && (
           <motion.div
-            key="understanding"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
-                border: '1px solid rgba(212,168,67,0.25)',
-                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
-              }}
-            >
-              <span className="text-3xl">🔍</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">מבין את הסרטון שלך...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI בוחן את הפריימים ומזהה את סוג התוכן, כוונת היוצר, והרושם שמשאיר
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#D4A843' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Stage 1 · Video Understanding Engine
-            </p>
-          </motion.div>
-        )}
-
-        {/* Understood — show result */}
-        {phase === 'understood' && understanding && (
-          <motion.div
-            key="understood"
+            key="scanning"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="relative z-10"
           >
-            <UnderstandingResult
-              understanding={understanding}
-              userSelectedType={context.contentType}
-              onContinue={handlePerception}
-            />
-          </motion.div>
-        )}
-
-        {/* Perception — loading state */}
-        {phase === 'perception' && (
-          <motion.div
-            key="perception"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
-                border: '1px solid rgba(212,168,67,0.25)',
-                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
-              }}
-            >
-              <span className="text-3xl">🧠</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">משווה כוונה לתחושה...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI מנתח את הפער בין מה שרצית ליצור לבין מה שהצופה באמת מרגיש
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#D4A843' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Stage 2 · Perception Gap Engine
-            </p>
-          </motion.div>
-        )}
-
-        {/* Perceived — show result */}
-        {phase === 'perceived' && perceptionGap && (
-          <motion.div
-            key="perceived"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <PerceptionGapResult
-              gap={perceptionGap}
-              onContinue={handlePsychology}
-            />
-          </motion.div>
-        )}
-
-        {/* Psychology — loading state */}
-        {phase === 'psychology' && (
-          <motion.div
-            key="psychology"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
-                border: '1px solid rgba(212,168,67,0.25)',
-                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
-              }}
-            >
-              <span className="text-3xl">👁️</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">נכנס לראש של הצופה...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI מנתח קשב, סקרנות, אמון, אותנטיות, וכוח עצירת הגלילה
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#D4A843' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Stage 3 · Viewer Psychology Engine
-            </p>
-          </motion.div>
-        )}
-
-        {/* Psychologized — show result */}
-        {phase === 'psychologized' && viewerPsychology && (
-          <motion.div
-            key="psychologized"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <ViewerPsychologyResult
-              psychology={viewerPsychology}
-              onContinue={handleTimeline}
-            />
-          </motion.div>
-        )}
-
-        {/* Timeline — loading state */}
-        {phase === 'timeline' && (
-          <motion.div
-            key="timeline"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
-                border: '1px solid rgba(212,168,67,0.25)',
-                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
-              }}
-            >
-              <span className="text-3xl">⏱️</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">ממפה את ציר הזמן...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI בוחן כל רגע בסרטון ומזהה היכן הקשב נופל, הקצב מאט, וההוק נחלש
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#D4A843' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Stage 4 · Timeline Analysis Engine
-            </p>
-          </motion.div>
-        )}
-
-        {/* Timelined — show result */}
-        {phase === 'timelined' && timelineAnalysis && (
-          <motion.div
-            key="timelined"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <TimelineResult
-              analysis={timelineAnalysis}
-              onContinue={handleAdaptive}
-            />
-          </motion.div>
-        )}
-
-        {/* Adaptive — loading state */}
-        {phase === 'adaptive' && (
-          <motion.div
-            key="adaptive"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
-                border: '1px solid rgba(212,168,67,0.25)',
-                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
-              }}
-            >
-              <span className="text-3xl">🎯</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">מתאים את הניתוח לסרטון שלך...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI מזהה את סוג התוכן ומפעיל את מנגנון הניתוח המתאים לו בלבד
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#D4A843' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Stage 5 · Adaptive Analysis Engine
-            </p>
-          </motion.div>
-        )}
-
-        {/* Adapted — show result */}
-        {phase === 'adapted' && adaptiveAnalysis && (
-          <motion.div
-            key="adapted"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <AdaptiveAnalysisResult
-              analysis={adaptiveAnalysis}
-              onContinue={handleRecommendations}
-            />
-          </motion.div>
-        )}
-
-        {/* Recommending — loading state */}
-        {phase === 'recommending' && (
-          <motion.div
-            key="recommending"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,168,67,0.12), rgba(212,168,67,0.04))',
-                border: '1px solid rgba(212,168,67,0.25)',
-                boxShadow: '0 0 40px rgba(212,168,67,0.15)',
-              }}
-            >
-              <span className="text-3xl">💡</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">בונה המלצות ספציפיות לסרטון שלך...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI מסנתז את כל 5 שלבי הניתוח לתוכנית פעולה ממוקדת
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#D4A843' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Stage 6 · Recommendation Engine
-            </p>
-          </motion.div>
-        )}
-
-        {/* Recommended — show result */}
-        {phase === 'recommended' && recommendations && (
-          <motion.div
-            key="recommended"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <RecommendationsResult
-              recommendations={recommendations}
-              onContinue={handleLangGate}
-            />
-          </motion.div>
-        )}
-
-        {/* Language safety gate */}
-        {phase === 'lang-gate' && (
-          <motion.div
-            key="lang-gate"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <LanguageSafetyGate
-              onAnalyze={handleLanguageCheck}
-              onSkip={runFullAnalysis}
-            />
-          </motion.div>
-        )}
-
-        {/* Language checking — loading */}
-        {phase === 'lang-checking' && (
-          <motion.div
-            key="lang-checking"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col items-center justify-center py-32 px-5"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(168,85,247,0.12), rgba(168,85,247,0.04))',
-                border: '1px solid rgba(168,85,247,0.25)',
-                boxShadow: '0 0 40px rgba(168,85,247,0.15)',
-              }}
-            >
-              <span className="text-3xl">🗣️</span>
-            </motion.div>
-
-            <h2 className="text-xl font-black text-white mb-2 text-center">מנתח את השפה בסרטון...</h2>
-            <p className="text-white/35 text-sm text-center mb-6 max-w-xs leading-relaxed">
-              ה-AI בוחן איך המילים שבחרת משפיעות על ה-reach, האמינות, והצופה
-            </p>
-
-            <div className="flex items-center gap-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: '#a855f7' }}
-                  animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-
-            <p className="text-[10px] text-white/15 mt-8 font-mono uppercase tracking-widest">
-              Optional · Language & Safety Layer
-            </p>
-          </motion.div>
-        )}
-
-        {/* Language checked — show result */}
-        {phase === 'lang-checked' && languageSafety && (
-          <motion.div
-            key="lang-checked"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <LanguageSafetyResult
-              analysis={languageSafety}
-              onContinue={runFullAnalysis}
-            />
-          </motion.div>
-        )}
-
-        {/* Analyzing */}
-        {phase === 'analyzing' && (
-          <motion.div
-            key="analyzing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10"
-          >
-            <AIScanner frames={frameDataRef?.frames ?? []} />
+            <ScanningScreen frames={frameDataRef?.frames ?? []} />
           </motion.div>
         )}
 

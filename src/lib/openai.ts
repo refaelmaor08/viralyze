@@ -88,80 +88,23 @@ const goalLabels: Record<string, string> = {
 function buildContextualInstructions(context: SimpleVideoContext): string {
   const parts: string[] = [];
 
-  // Content type adaptation
-  if (context.contentType === 'ad') {
-    parts.push(`
-CONTENT TYPE: Advertisement / Paid Ad
-Analyze through the lens of AD PERFORMANCE:
-- Conversion potential and purchase psychology
-- CTA strength, timing, and urgency
-- Ad retention benchmarks (hook must work in <1s in paid feed)
-- Scroll-stopping power and pattern interrupt
-- Trust signals and credibility markers
-- Hook-to-purchase funnel strength
-DO NOT overly focus on: pure entertainment virality, comment bait, share triggers (unless they serve the ad)`);
-  } else if (context.contentType === 'organic-tiktok') {
-    parts.push(`
-CONTENT TYPE: Organic TikTok
-Analyze through the lens of TIKTOK ALGORITHM PERFORMANCE:
-- Native TikTok energy, authenticity, and relatability
-- Algorithm retention patterns (re-watch loops, watch time %)
-- Comment magnetism and reply triggers
-- Trend alignment and sound selection relevance
-- Pattern interrupts and curiosity gaps`);
-  } else if (context.contentType === 'ugc') {
-    parts.push(`
-CONTENT TYPE: UGC (User Generated Content)
-Analyze for authenticity, trust, and conversion:
-- Does it feel genuine or scripted?
-- Natural vs forced delivery
-- Social proof elements
-- Purchase intent triggers`);
-  } else if (context.contentType === 'tutorial') {
-    parts.push(`
-CONTENT TYPE: Tutorial / Educational
-Analyze for: clarity, value delivery speed, retention of learners, CTA for saves/follows`);
-  } else if (context.contentType === 'personal-brand') {
-    parts.push(`
-CONTENT TYPE: Personal Brand
-Analyze for: brand consistency, likability, expertise signals, audience connection, follow triggers`);
+  // Content type — HINT ONLY. Analyze what you actually see, not what it was intended to be.
+  if (context.contentType && context.contentType !== 'other') {
+    const label = contentTypeLabels[context.contentType] || context.contentType;
+    parts.push(`Creator says this is: "${label}" — this is context only. Analyze based on what you actually SEE in the frames, not on this label.`);
   }
 
-  // Editability constraints — CRITICAL
+  // Editability constraints — these are real constraints
   if (context.editability === 'final') {
-    parts.push(`
-⚠️ CRITICAL CONSTRAINT — FINAL VERSION: This video has already been delivered/published.
-STRICTLY FORBIDDEN to suggest:
-- Re-shooting ANY scenes
-- Changing camera angles or locations
-- Filming new footage
-- Changing presenter, setup, or production
-- Any suggestion requiring new filming
-
-YOU MAY ONLY suggest post-delivery improvements:
-- Caption and subtitle optimization
-- Thumbnail / cover frame selection
-- Caption text for the post
-- Hook improvements through re-editing existing cuts
-- Pacing through removing or reordering existing clips
-- Music or sound selection changes
-- Text overlay additions
-- Platform optimization (aspect ratio, length trim)`);
+    parts.push(`EDITING CONSTRAINT (final version): Only suggest post-production changes — caption/subtitle edits, cover frame, pacing cuts, music change, text overlays. NO suggestions that require re-shooting.`);
   } else if (context.editability === 'editing-only') {
-    parts.push(`
-CONSTRAINT — EDITING ONLY: No re-shoots possible. Focus on edit-level improvements:
-- Cuts and pacing
-- Caption additions
-- Music changes
-- Text overlays
-- Reordering existing clips`);
+    parts.push(`EDITING CONSTRAINT: No re-shoots possible. Only suggest edit-level changes: cuts, pacing, captions, music, text overlays.`);
   }
 
-  // Goal adaptation (multi-goal)
+  // Goals
   if (context.goals && context.goals.length > 0) {
     const goalStr = context.goals.map((g) => goalLabels[g] || g).join(', ');
-    parts.push(`PRIMARY GOALS: ${goalStr}
-Weight your entire analysis toward achieving these specific goals. Suggestions, hooks, and CTAs should all serve these goals.`);
+    parts.push(`Creator's goals: ${goalStr}`);
   }
 
   // Audience
@@ -170,8 +113,7 @@ Weight your entire analysis toward achieving these specific goals. Suggestions, 
       context.audienceAge && `Age: ${context.audienceAge}`,
       context.audienceGender && `Gender: ${context.audienceGender}`,
     ].filter(Boolean).join(', ');
-    parts.push(`TARGET AUDIENCE: ${audience}
-Tailor hook and retention analysis for this specific audience's psychology.`);
+    parts.push(`Target audience: ${audience}`);
   }
 
   return parts.join('\n\n');
