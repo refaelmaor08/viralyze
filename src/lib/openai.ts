@@ -147,6 +147,32 @@ function formatSec(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
+// Map a 1-based frame number to a human-readable section label
+function frameNumToHuman(n: number, timestamps: number[], dur: number, isHe: boolean): string {
+  const ts = timestamps[n - 1];
+  if (ts === undefined) return isHe ? 'בסרטון' : 'in the video';
+  const frac = dur > 0 ? ts / dur : 0;
+  if (ts <= 1.0) return isHe ? 'בשנייה הראשונה' : 'in the first second';
+  if (ts <= 3.0) return isHe ? 'בתחילת הסרטון' : 'at the start';
+  if (frac <= 0.25) return isHe ? 'בתחילת הסרטון' : 'early in the video';
+  if (frac <= 0.5) return isHe ? 'באמצע הסרטון' : 'mid-video';
+  if (frac <= 0.75) return isHe ? 'לקראת הסוף' : 'later in the video';
+  return isHe ? 'בסוף הסרטון' : 'near the end';
+}
+
+// Replace all "Frame N" / "Frames N-M" occurrences in text with human section labels
+function deframe(text: string, timestamps: number[], dur: number, isHe: boolean): string {
+  if (!text) return text;
+  return text.replace(/\bframes?\s+(\d+)(?:\s*[-–]\s*\d+)?\s*:?/gi, (match, n1) => {
+    const desc = frameNumToHuman(parseInt(n1, 10), timestamps, dur, isHe);
+    return desc + (match.trimEnd().endsWith(':') ? ':' : '');
+  });
+}
+
+function deframeArr(arr: string[], timestamps: number[], dur: number, isHe: boolean): string[] {
+  return arr.map((s) => deframe(s, timestamps, dur, isHe));
+}
+
 function buildTranscriptSection(t: TranscriptData | null | undefined): string {
   if (!t) return '';
 
@@ -479,11 +505,14 @@ Rules for topMismatches:
   const sanitizeSeverity = (v: unknown): GapItem['severity'] =>
     v === 'high' || v === 'medium' || v === 'low' ? v : 'medium';
 
+  const pgTimestamps = frameData.frameTimestamps;
+  const pgDur = frameData.duration;
+
   const topMismatches: GapItem[] = Array.isArray(raw.topMismatches)
     ? raw.topMismatches.slice(0, 4).map((item: Record<string, unknown>) => ({
         aspect: String(item.aspect || ''),
-        creatorThought: String(item.creatorThought || ''),
-        viewerFeels: String(item.viewerFeels || ''),
+        creatorThought: deframe(String(item.creatorThought || ''), pgTimestamps, pgDur, isHe),
+        viewerFeels: deframe(String(item.viewerFeels || ''), pgTimestamps, pgDur, isHe),
         severity: sanitizeSeverity(item.severity),
       }))
     : [];
@@ -492,11 +521,11 @@ Rules for topMismatches:
 
   return {
     alignmentScore,
-    creatorView: String(raw.creatorView || ''),
-    viewerView: String(raw.viewerView || ''),
-    mismatchExplained: String(raw.mismatchExplained || ''),
+    creatorView: deframe(String(raw.creatorView || ''), pgTimestamps, pgDur, isHe),
+    viewerView: deframe(String(raw.viewerView || ''), pgTimestamps, pgDur, isHe),
+    mismatchExplained: deframe(String(raw.mismatchExplained || ''), pgTimestamps, pgDur, isHe),
     topMismatches,
-    recommendation: String(raw.recommendation || ''),
+    recommendation: deframe(String(raw.recommendation || ''), pgTimestamps, pgDur, isHe),
     isAligned: alignmentScore >= 75,
   };
 }
@@ -530,6 +559,8 @@ export async function analyzeVideo(
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
   const dur = frameData.duration;
   const durRounded = Math.round(dur);
+  const isHe = context.language === 'hebrew';
+  const timestamps = frameData.frameTimestamps;
 
   const clamp = (v: unknown) => Math.max(1, Math.min(100, Math.round(Number(v) || 50)));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -542,32 +573,38 @@ export async function analyzeVideo(
     ? raw.timeline
         .map((t: Record<string, unknown>) => {
           const sec = Math.max(0, Math.min(dur, Number(t.seconds) || 0));
-          return { ...t, seconds: sec, time: formatSec(sec) };
+          return { ...t, seconds: sec, time: formatSec(sec), text: deframe(String(t.text || ''), timestamps, dur, isHe) };
         })
         .filter((t: Record<string, unknown>) => Number(t.seconds) <= durRounded)
     : [];
 
   // Drop fixMyVideo entries whose start timestamp exceeds duration
   const fixMyVideo = Array.isArray(raw.fixMyVideo)
-    ? raw.fixMyVideo.filter((f: Record<string, unknown>) => {
-        const ts = String(f.timestamp || '');
-        const m = ts.match(/^(\d+):(\d{2})/);
-        if (!m) return true;
-        return parseInt(m[1]) * 60 + parseInt(m[2]) < durRounded;
-      })
+    ? raw.fixMyVideo
+        .filter((f: Record<string, unknown>) => {
+          const ts = String(f.timestamp || '');
+          const m = ts.match(/^(\d+):(\d{2})/);
+          if (!m) return true;
+          return parseInt(m[1]) * 60 + parseInt(m[2]) < durRounded;
+        })
+        .map((f: Record<string, unknown>) => ({
+          ...f,
+          issue: deframe(String(f.issue || ''), timestamps, dur, isHe),
+          fix: deframe(String(f.fix || ''), timestamps, dur, isHe),
+        }))
     : [];
 
   // Sanitize all feedback text arrays — drop any item mentioning a time > dur
   const fb = raw.feedback ?? {};
   const feedback = {
-    strengths: filterStrings(fb.strengths, durRounded),
-    weaknesses: filterStrings(fb.weaknesses, durRounded),
-    attentionDropPoints: filterStrings(fb.attentionDropPoints, durRounded),
-    pacingIssues: filterStrings(fb.pacingIssues, durRounded),
-    genericElements: filterStrings(fb.genericElements, durRounded),
-    strongElements: filterStrings(fb.strongElements, durRounded),
-    whatToCut: filterStrings(fb.whatToCut, durRounded),
-    immediateChanges: filterStrings(fb.immediateChanges, durRounded),
+    strengths: deframeArr(filterStrings(fb.strengths, durRounded), timestamps, dur, isHe),
+    weaknesses: deframeArr(filterStrings(fb.weaknesses, durRounded), timestamps, dur, isHe),
+    attentionDropPoints: deframeArr(filterStrings(fb.attentionDropPoints, durRounded), timestamps, dur, isHe),
+    pacingIssues: deframeArr(filterStrings(fb.pacingIssues, durRounded), timestamps, dur, isHe),
+    genericElements: deframeArr(filterStrings(fb.genericElements, durRounded), timestamps, dur, isHe),
+    strongElements: deframeArr(filterStrings(fb.strongElements, durRounded), timestamps, dur, isHe),
+    whatToCut: deframeArr(filterStrings(fb.whatToCut, durRounded), timestamps, dur, isHe),
+    immediateChanges: deframeArr(filterStrings(fb.immediateChanges, durRounded), timestamps, dur, isHe),
   };
 
   return {
@@ -577,8 +614,8 @@ export async function analyzeVideo(
     suggestions: raw.suggestions,
     fixMyVideo,
     timeline,
-    executiveSummary: raw.executiveSummary,
-    overallVerdict: raw.overallVerdict,
+    executiveSummary: deframe(String(raw.executiveSummary || ''), timestamps, dur, isHe),
+    overallVerdict: deframe(String(raw.overallVerdict || ''), timestamps, dur, isHe),
     createdAt: new Date().toISOString(),
   };
 }
@@ -858,22 +895,24 @@ Return ONLY valid JSON:
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
   const clamp = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
+  const adTimestamps = frameData.frameTimestamps;
+  const adDur = frameData.duration;
 
   const metrics: AdaptiveMetric[] = Array.isArray(raw.metrics)
     ? raw.metrics.slice(0, 6).map((m: Record<string, unknown>) => ({
         key: String(m.key || ''),
         label: String(m.label || ''),
         score: clamp(m.score),
-        explanation: String(m.explanation || ''),
+        explanation: deframe(String(m.explanation || ''), adTimestamps, adDur, isHe),
       }))
     : [];
 
   return {
     profileType,
     metrics,
-    topStrengths: Array.isArray(raw.topStrengths) ? raw.topStrengths.slice(0, 3).map(String) : [],
-    criticalFixes: Array.isArray(raw.criticalFixes) ? raw.criticalFixes.slice(0, 3).map(String) : [],
-    verdict: String(raw.verdict || ''),
+    topStrengths: deframeArr(Array.isArray(raw.topStrengths) ? raw.topStrengths.slice(0, 3).map(String) : [], adTimestamps, adDur, isHe),
+    criticalFixes: deframeArr(Array.isArray(raw.criticalFixes) ? raw.criticalFixes.slice(0, 3).map(String) : [], adTimestamps, adDur, isHe),
+    verdict: deframe(String(raw.verdict || ''), adTimestamps, adDur, isHe),
   };
 }
 
@@ -995,6 +1034,8 @@ Return ONLY valid JSON:
   const sanitizeIssue = (v: unknown): MomentIssue | undefined =>
     VALID_ISSUE.includes(v as MomentIssue) ? (v as MomentIssue) : undefined;
 
+  const tlDur = frameData.duration;
+
   const moments: TimelineMoment[] = Array.isArray(raw.moments)
     ? raw.moments.slice(0, 12).map((m: Record<string, unknown>) => {
         const quality = sanitizeQuality(m.quality);
@@ -1005,9 +1046,9 @@ Return ONLY valid JSON:
           endSec: Math.min(dur, Math.round(Number(m.endSec) || dur)),
           quality,
           issue,
-          title: String(m.title || ''),
-          description: String(m.description || ''),
-          fix: isNegative && m.fix && m.fix !== 'null' ? String(m.fix) : undefined,
+          title: deframe(String(m.title || ''), frameTimestamps, tlDur, isHe),
+          description: deframe(String(m.description || ''), frameTimestamps, tlDur, isHe),
+          fix: isNegative && m.fix && m.fix !== 'null' ? deframe(String(m.fix), frameTimestamps, tlDur, isHe) : undefined,
         };
       })
     : [];
@@ -1022,7 +1063,7 @@ Return ONLY valid JSON:
     criticalDropSec: parseSecOrNull(raw.criticalDropSec),
     bestMomentSec: parseSecOrNull(raw.bestMomentSec),
     retentionEstimate: Math.max(0, Math.min(100, Math.round(Number(raw.retentionEstimate) || 40))),
-    summary: String(raw.summary || ''),
+    summary: deframe(String(raw.summary || ''), frameTimestamps, tlDur, isHe),
   };
 }
 
@@ -1119,12 +1160,14 @@ Return ONLY valid JSON:
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
+  const vpTimestamps = frameData.frameTimestamps;
+  const vpDur = frameData.duration;
 
   const clampScore = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
 
   const parseMetric = (key: string): PsychologyMetric => ({
     score: clampScore(raw[key]?.score),
-    explanation: String(raw[key]?.explanation || ''),
+    explanation: deframe(String(raw[key]?.explanation || ''), vpTimestamps, vpDur, isHe),
   });
 
   const parseStringArray = (v: unknown, max = 3): string[] =>
@@ -1139,10 +1182,10 @@ Return ONLY valid JSON:
     scrollStoppingPower: parseMetric('scrollStoppingPower'),
     boredom: parseMetric('boredom'),
     confusion: parseMetric('confusion'),
-    whyStay: parseStringArray(raw.whyStay),
-    whyLeave: parseStringArray(raw.whyLeave),
-    authenticityExplained: String(raw.authenticityExplained || ''),
-    emotionExplained: String(raw.emotionExplained || ''),
+    whyStay: deframeArr(parseStringArray(raw.whyStay), vpTimestamps, vpDur, isHe),
+    whyLeave: deframeArr(parseStringArray(raw.whyLeave), vpTimestamps, vpDur, isHe),
+    authenticityExplained: deframe(String(raw.authenticityExplained || ''), vpTimestamps, vpDur, isHe),
+    emotionExplained: deframe(String(raw.emotionExplained || ''), vpTimestamps, vpDur, isHe),
   };
 }
 
@@ -1477,6 +1520,8 @@ Return ONLY valid JSON:
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
+  const recTimestamps = frameData.frameTimestamps;
+  const recDur = frameData.duration;
 
   const VALID_PRIORITIES: RecommendationPriority[] = ['critical', 'high', 'medium'];
   const VALID_CATEGORIES: RecommendationCategoryType[] = ['hook', 'pacing', 'emotion', 'cta', 'authenticity', 'fix'];
@@ -1493,10 +1538,10 @@ Return ONLY valid JSON:
         recommendations: Array.isArray(s.recommendations)
           ? s.recommendations.slice(0, 3).map((r: Record<string, unknown>): Recommendation => ({
               priority: sanitizePriority(r.priority),
-              title: String(r.title || ''),
-              problem: String(r.problem || ''),
-              fix: String(r.fix || ''),
-              ...(r.example && String(r.example).trim() ? { example: String(r.example) } : {}),
+              title: deframe(String(r.title || ''), recTimestamps, recDur, isHe),
+              problem: deframe(String(r.problem || ''), recTimestamps, recDur, isHe),
+              fix: deframe(String(r.fix || ''), recTimestamps, recDur, isHe),
+              ...(r.example && String(r.example).trim() ? { example: deframe(String(r.example), recTimestamps, recDur, isHe) } : {}),
             }))
           : [],
       }))
@@ -1504,7 +1549,7 @@ Return ONLY valid JSON:
 
   return {
     sections,
-    priorityAction: String(raw.priorityAction || ''),
+    priorityAction: deframe(String(raw.priorityAction || ''), recTimestamps, recDur, isHe),
     potentialGain: Math.max(5, Math.min(35, Math.round(Number(raw.potentialGain) || 15))),
   };
 }
