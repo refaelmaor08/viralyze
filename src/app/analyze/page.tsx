@@ -194,10 +194,6 @@ function AnalyzeContent() {
         return;
       }
 
-      safetyTimerRef.current = setTimeout(() => {
-        safetyTimerRef.current = null;
-        setFramesReady(true);
-      }, 1000);
       void extractFramesAsync(selectedFile);
     },
     [extractFramesAsync, generateThumbnail, clearSafetyTimer, checkDuration]

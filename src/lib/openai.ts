@@ -455,7 +455,7 @@ Rules for topMismatches:
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -471,7 +471,6 @@ Rules for topMismatches:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 800,
   });
 
@@ -512,7 +511,7 @@ export async function analyzeVideo(
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -525,7 +524,6 @@ export async function analyzeVideo(
     ],
     response_format: { type: 'json_object' },
     temperature: 0,
-    seed: 42,
     max_tokens: 4000,
   });
 
@@ -630,7 +628,7 @@ Study the frames carefully and return ONLY this JSON:
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -646,7 +644,6 @@ Study the frames carefully and return ONLY this JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 400,
   });
 
@@ -840,7 +837,7 @@ Return ONLY valid JSON:
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -856,7 +853,6 @@ Return ONLY valid JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 1000,
   });
 
@@ -890,11 +886,18 @@ export async function analyzeTimeline(
   const dur = Math.round(frameData.duration);
   const frameCount = frameData.frames.length;
 
-  // Build approximate frame timestamps for context
-  const frameTimestamps = Array.from({ length: frameCount }, (_, i) => {
-    const t = i === 0 ? 0.3 : i === frameCount - 1 ? dur - 0.5 : Math.round((dur / (frameCount - 1)) * i * 10) / 10;
-    return Math.min(t, dur);
-  });
+  // Use real measured timestamps; fall back to evenly-spaced only if missing
+  const frameTimestamps: number[] = frameData.frameTimestamps.length === frameCount
+    ? frameData.frameTimestamps
+    : Array.from({ length: frameCount }, (_, i) => {
+        const t = i === 0 ? 0.3 : i === frameCount - 1 ? dur - 0.5 : Math.round((dur / (frameCount - 1)) * i * 10) / 10;
+        return Math.min(t, dur);
+      });
+
+  const sceneCount = frameData.sceneChanges.length;
+  const sceneList = sceneCount > 0
+    ? frameData.sceneChanges.map((t) => `${t}s`).join(', ')
+    : 'none detected';
 
   const platformStr = (context.platforms ?? []).map((p) => platformLabels[p] ?? p).join(', ') || 'Instagram';
 
@@ -904,6 +907,8 @@ export async function analyzeTimeline(
       text: `You are a video timeline analyst for ${platformStr}.
 
 VIDEO: ${dur} seconds | ${understanding.primaryType} | ${frameCount} frames at: ${frameTimestamps.map((t) => `${t}s`).join(', ')}
+Scene changes detected: ${sceneCount} (at: ${sceneList})
+Editing pace: ${frameData.editingPace} (${frameData.cutsPerSecond.toFixed(2)} cuts/sec)
 
 YOUR TASK: Analyze this video MOMENT BY MOMENT. Break it into 6-10 time segments covering the FULL duration (0 to ${dur}s).
 
@@ -960,7 +965,7 @@ Return ONLY valid JSON:
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -976,7 +981,6 @@ Return ONLY valid JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 1400,
   });
 
@@ -1095,7 +1099,7 @@ Return ONLY valid JSON:
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -1111,7 +1115,6 @@ Return ONLY valid JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 1200,
   });
 
@@ -1233,7 +1236,6 @@ Return ONLY valid JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 1200,
   });
 
@@ -1455,7 +1457,7 @@ Return ONLY valid JSON:
     ...frameData.frames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'low' },
+        image_url: { url: frame, detail: 'auto' },
       })
     ),
   ];
@@ -1471,7 +1473,6 @@ Return ONLY valid JSON:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    seed: 42,
     max_tokens: 1800,
   });
 
