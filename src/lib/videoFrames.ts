@@ -44,7 +44,7 @@ export async function getVideoMeta(file: File): Promise<VideoMeta> {
   });
 }
 
-// Cap frames by duration so iPhone MOV seeking finishes in reasonable time.
+// Cap frames by duration so extraction finishes in reasonable time.
 // ≤60s → 20 frames, ≤120s → 30 frames, else 40 frames.
 function buildTimestamps(dur: number): number[] {
   const maxFrames = dur <= 60 ? 20 : dur <= 120 ? 30 : 40;
@@ -92,16 +92,17 @@ function avgPixelDiff(a: ImageData, b: ImageData): number {
   return count > 0 ? sum / (count * 3) : 0;
 }
 
-// Returns true if the frame is almost entirely black — indicates HEVC not decoded yet
+// Returns true if the frame is almost entirely black.
+// Used to detect GPU-decoded frames that haven't been transferred to CPU memory yet.
 function isLikelyBlack(imgData: ImageData): boolean {
   const d = imgData.data;
   let sum = 0;
   let count = 0;
-  for (let i = 0; i < d.length; i += 64) { // sample every 16th pixel (4 channels × 16)
+  for (let i = 0; i < d.length; i += 64) {
     sum += d[i] + d[i + 1] + d[i + 2];
     count++;
   }
-  return count > 0 && (sum / count) < 8; // avg channel value < 8 ≈ essentially black
+  return count > 0 && (sum / count) < 8;
 }
 
 export async function extractFrames(
@@ -123,7 +124,6 @@ export async function extractFrames(
     video.playsInline = true;
     video.preload = 'auto';
 
-    // If metadata never loads (common on first load of MOV), reject after 10s
     const metaTimer = setTimeout(() => {
       URL.revokeObjectURL(url);
       reject(new Error('extractFrames: metadata load timeout'));
@@ -138,35 +138,31 @@ export async function extractFrames(
       canvas.width = W;
       canvas.height = H;
 
-      // Codec & API support diagnostics (visible in browser console)
       const hevcSupport = video.canPlayType('video/mp4; codecs="hvc1"') || video.canPlayType('video/mp4; codecs="hev1"');
-      const rVFCSupport = 'requestVideoFrameCallback' in video;
+      // Cast to boolean to prevent TypeScript from narrowing `video` to `never`
+      // in the else branch (the DOM lib includes requestVideoFrameCallback on HTMLVideoElement)
+      const rVFCSupport = ('requestVideoFrameCallback' in video) as boolean;
+      const method = rVFCSupport ? 'playback+rVFC' : 'seek+rAF';
       console.log(
         `[viralyze:frames] file="${file.name}" type=${file.type} ` +
         `${video.videoWidth}×${video.videoHeight} dur=${dur.toFixed(1)}s ` +
-        `hevc=${hevcSupport || 'no'} rVFC=${rVFCSupport}`
+        `hevc="${hevcSupport || 'no'}" rVFC=${rVFCSupport} method=${method}`
       );
 
       const timestamps = buildTimestamps(dur);
       const total = timestamps.length;
-      console.log(`[viralyze:frames] ${total} frames from ${dur.toFixed(1)}s video`);
+      console.log(`[viralyze:frames] ${total} frames planned via ${method}`);
 
       const frames: string[] = [];
       const frameTimestamps: number[] = [];
       const sceneChanges: number[] = [];
       let prevImageData: ImageData | null = null;
-      let idx = 0;
-      let seekTimer: ReturnType<typeof setTimeout> | null = null;
-
       const SCENE_DIFF_THRESHOLD = 30;
-      const SEEK_TIMEOUT_MS = 3000;
 
-      const clearSeekTimer = () => {
-        if (seekTimer) { clearTimeout(seekTimer); seekTimer = null; }
-      };
-
+      let settled = false;
       const finish = () => {
-        clearSeekTimer();
+        if (settled) return;
+        settled = true;
         URL.revokeObjectURL(url);
         const cutsPerSecond = dur > 0 ? parseFloat((sceneChanges.length / dur).toFixed(3)) : 0;
         const editingPace: 'slow' | 'medium' | 'fast' =
@@ -175,87 +171,159 @@ export async function extractFrames(
         resolve({ frames, frameTimestamps, sceneChanges, editingPace, cutsPerSecond });
       };
 
-      const next = () => {
-        clearSeekTimer();
-        if (idx >= total) { finish(); return; }
-        // Per-seek timeout: skip stuck seeks (common with MOV/HEVC files)
-        seekTimer = setTimeout(() => {
-          console.warn(`[viralyze:frames] seek timeout at t=${timestamps[idx]}s — skipping`);
-          onProgress?.(idx + 1, total);
-          idx++;
-          next();
-        }, SEEK_TIMEOUT_MS);
-        video.currentTime = timestamps[idx];
+      // Shared frame capture logic: draw video to canvas and store if non-black
+      const storeFrame = (ts: number, progressIdx: number) => {
+        ctx.drawImage(video, 0, 0, W, H);
+        const imgData = ctx.getImageData(0, 0, W, H);
+        if (prevImageData !== null && avgPixelDiff(prevImageData, imgData) > SCENE_DIFF_THRESHOLD) {
+          sceneChanges.push(ts);
+        }
+        prevImageData = imgData;
+        if (!isLikelyBlack(imgData)) {
+          frames.push(canvas.toDataURL('image/jpeg', 0.85));
+          frameTimestamps.push(ts);
+        } else {
+          console.warn(`[viralyze:frames] black frame at t=${ts.toFixed(1)}s — skipped`);
+        }
+        onProgress?.(progressIdx + 1, total);
       };
 
-      video.onseeked = () => {
-        clearSeekTimer();
+      if (rVFCSupport) {
+        // ── PLAYBACK MODE (primary) ────────────────────────────────────────
+        //
+        // WHY: Seeking a paused HEVC video and calling ctx.drawImage() returns
+        // black pixels in Chrome even when rVFC fires — the GPU-decoded frame
+        // is in VRAM but Chrome only transfers it to CPU for canvas when the
+        // video is ACTIVELY PLAYING. rVFC during playback gives correctly
+        // decoded pixels for all formats including HEVC/QuickTime.
+        //
+        const sortedTs = [...timestamps].sort((a, b) => a - b);
+        let tsIdx = 0;
 
-        let captureSettled = false;
-        let captureAttempt = 0;
+        // Hard timeout: (video duration × 2) or 30s minimum, so a 23s video
+        // playing at 4× (≈5.75s wall time) has plenty of margin.
+        const playbackTimeout = setTimeout(() => {
+          console.warn('[viralyze:frames] playback timeout — returning partial result');
+          video.pause();
+          finish();
+        }, Math.max(30_000, dur * 2_000));
 
-        // Inner timeout — if rVFC/rAF never fires (unsupported codec), skip this frame
-        const captureGiveUp = setTimeout(() => {
-          if (captureSettled) return;
-          captureSettled = true;
-          console.warn(`[viralyze:frames] capture timeout at t=${timestamps[idx].toFixed(1)}s — skipping`);
-          onProgress?.(idx + 1, total);
-          idx++;
-          next();
-        }, 1500);
-
-        const capture = () => {
-          if (captureSettled) return;
-
-          ctx.drawImage(video, 0, 0, W, H);
-          const imgData = ctx.getImageData(0, 0, W, H);
-
-          // HEVC decode latency: if frame is all-black, retry up to 2× with 120ms gap
-          if (isLikelyBlack(imgData) && captureAttempt < 2) {
-            captureAttempt++;
-            console.warn(`[viralyze:frames] black frame at t=${timestamps[idx].toFixed(1)}s — retry ${captureAttempt}`);
-            setTimeout(capture, 120);
-            return;
+        // When video ends naturally, capture any remaining targets from last frame
+        video.onended = () => {
+          clearTimeout(playbackTimeout);
+          while (tsIdx < sortedTs.length) {
+            storeFrame(sortedTs[tsIdx], tsIdx);
+            tsIdx++;
           }
-
-          clearTimeout(captureGiveUp);
-          captureSettled = true;
-
-          if (prevImageData !== null && avgPixelDiff(prevImageData, imgData) > SCENE_DIFF_THRESHOLD) {
-            sceneChanges.push(timestamps[idx]);
-          }
-          prevImageData = imgData;
-
-          if (!isLikelyBlack(imgData)) {
-            frames.push(canvas.toDataURL('image/jpeg', 0.85)); // 0.85 for better GPT-4o clarity
-            frameTimestamps.push(timestamps[idx]);
-          } else {
-            console.warn(`[viralyze:frames] undecodable frame at t=${timestamps[idx].toFixed(1)}s — skipping`);
-          }
-
-          onProgress?.(idx + 1, total);
-          idx++;
-          next();
+          finish();
         };
 
-        // requestVideoFrameCallback fires when the seeked frame is actually rendered by the browser.
-        // This is the correct fix for Chrome/Safari HEVC decode latency after onseeked.
-        // Falls back to requestAnimationFrame for browsers without rVFC.
-        if ('requestVideoFrameCallback' in video) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (video as any).requestVideoFrameCallback(capture);
-        } else {
-          requestAnimationFrame(capture);
-        }
-      };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const onRVFC = (_now: DOMHighResTimeStamp, meta: { mediaTime: number }) => {
+          const t = meta.mediaTime;
+          // Drain all targets whose timestamp we've just passed
+          while (tsIdx < sortedTs.length && t >= sortedTs[tsIdx] - 0.1) {
+            storeFrame(sortedTs[tsIdx], tsIdx);
+            tsIdx++;
+          }
+          if (tsIdx < sortedTs.length) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (video as any).requestVideoFrameCallback(onRVFC);
+          } else {
+            clearTimeout(playbackTimeout);
+            video.pause();
+            finish();
+          }
+        };
 
-      video.onerror = () => {
-        clearSeekTimer();
-        URL.revokeObjectURL(url);
-        reject(new Error('שגיאה בחילוץ פריימים'));
-      };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (video as any).requestVideoFrameCallback(onRVFC);
 
-      next();
+        // Play at 4× — most codecs support this; Chrome and Safari both do for HEVC.
+        // At 4× a 23s video streams in ~5.75s wall-clock time.
+        video.playbackRate = 4;
+        video.play().catch(() => {
+          // Some browsers reject 4× for certain codecs; fall back to 1×
+          video.playbackRate = 1;
+          video.play().catch(() => {
+            clearTimeout(playbackTimeout);
+            finish();
+          });
+        });
+
+      } else {
+        // ── SEEK MODE (fallback — Firefox and browsers without rVFC) ────────
+        let idx = 0;
+        let seekTimer: ReturnType<typeof setTimeout> | null = null;
+        const SEEK_TIMEOUT_MS = 3000;
+
+        const clearSeekTimer = () => {
+          if (seekTimer) { clearTimeout(seekTimer); seekTimer = null; }
+        };
+
+        const next = () => {
+          clearSeekTimer();
+          if (idx >= total) { finish(); return; }
+          seekTimer = setTimeout(() => {
+            console.warn(`[viralyze:frames] seek timeout at t=${timestamps[idx]}s — skipping`);
+            onProgress?.(idx + 1, total);
+            idx++;
+            next();
+          }, SEEK_TIMEOUT_MS);
+          video.currentTime = timestamps[idx];
+        };
+
+        video.onseeked = () => {
+          clearSeekTimer();
+          let captureSettled = false;
+          let captureAttempt = 0;
+
+          const captureGiveUp = setTimeout(() => {
+            if (captureSettled) return;
+            captureSettled = true;
+            console.warn(`[viralyze:frames] capture giveup at t=${timestamps[idx].toFixed(1)}s`);
+            onProgress?.(idx + 1, total);
+            idx++;
+            next();
+          }, 1500);
+
+          const captureLoop = () => {
+            if (captureSettled) return;
+            ctx.drawImage(video, 0, 0, W, H);
+            const imgData = ctx.getImageData(0, 0, W, H);
+            if (isLikelyBlack(imgData) && captureAttempt < 2) {
+              captureAttempt++;
+              setTimeout(captureLoop, 120);
+              return;
+            }
+            clearTimeout(captureGiveUp);
+            captureSettled = true;
+            // Scene diff and store using the imgData already in the canvas
+            if (prevImageData !== null && avgPixelDiff(prevImageData, imgData) > SCENE_DIFF_THRESHOLD) {
+              sceneChanges.push(timestamps[idx]);
+            }
+            prevImageData = imgData;
+            if (!isLikelyBlack(imgData)) {
+              frames.push(canvas.toDataURL('image/jpeg', 0.85));
+              frameTimestamps.push(timestamps[idx]);
+            } else {
+              console.warn(`[viralyze:frames] undecodable at t=${timestamps[idx].toFixed(1)}s — skipped`);
+            }
+            onProgress?.(idx + 1, total);
+            idx++;
+            next();
+          };
+
+          requestAnimationFrame(captureLoop);
+        };
+
+        video.onerror = () => {
+          clearSeekTimer();
+          finish();
+        };
+
+        next();
+      }
     };
 
     video.onerror = () => {
