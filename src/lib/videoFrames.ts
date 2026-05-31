@@ -10,8 +10,6 @@ export interface ExtractedFrameData {
   sceneChanges: number[];
   editingPace: 'slow' | 'medium' | 'fast';
   cutsPerSecond: number;
-  logs: string[];
-  isHevc: boolean;
 }
 
 export async function getVideoMeta(file: File): Promise<VideoMeta> {
@@ -110,15 +108,9 @@ function isLikelyBlack(imgData: ImageData): boolean {
 export async function extractFrames(
   file: File,
   onProgress?: (current: number, total: number) => void,
-  onLog?: (msg: string) => void,
 ): Promise<ExtractedFrameData> {
   return new Promise((resolve, reject) => {
-    const logs: string[] = [];
-    const log = (msg: string) => {
-      logs.push(msg);
-      console.log(`[viralyze:frames] ${msg}`);
-      onLog?.(msg);
-    };
+    const log = (msg: string) => console.log(`[viralyze:frames] ${msg}`);
 
     const video = document.createElement('video');
     const canvas = document.createElement('canvas');
@@ -184,7 +176,7 @@ export async function extractFrames(
         const editingPace: 'slow' | 'medium' | 'fast' =
           cutsPerSecond > 0.5 ? 'fast' : cutsPerSecond > 0.15 ? 'medium' : 'slow';
         log(`done: ${frames.length} frames stored, ${blackCount} black skipped, ${sceneChanges.length} cuts`);
-        resolve({ frames, frameTimestamps, sceneChanges, editingPace, cutsPerSecond, logs, isHevc });
+        resolve({ frames, frameTimestamps, sceneChanges, editingPace, cutsPerSecond });
       };
 
       // Shared frame capture logic: draw video to canvas and store if non-black

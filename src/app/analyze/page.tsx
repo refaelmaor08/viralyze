@@ -41,7 +41,6 @@ function AnalyzeContent() {
     platforms: ['instagram'],
   });
   const [debugInfo, setDebugInfo] = useState<{ fingerprint: string; duration: number; cacheHit: boolean; aiMode: string } | null>(null);
-  const [dbg, setDbg] = useState({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null as boolean | null, analyzeStatus: 'idle' as 'idle'|'preparing'|'running'|'done'|'error', lastError: '', fileType: '', dimensions: '', extractionLogs: [] as string[], wasmFallback: false, wasmOutputFiles: -1, wasmExtractedFrames: -1 });
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
@@ -89,21 +88,12 @@ function AnalyzeContent() {
     const t0 = Date.now();
     const elapsed = () => `+${Date.now() - t0}ms`;
     let timedOut = false;
-    const allLogs: string[] = [];
 
-    const appendLog = (msg: string) => {
-      allLogs.push(msg);
-      setDbg(d => ({ ...d, extractionLogs: [...allLogs] }));
-    };
-
-    setDbg(d => ({ ...d, analyzeStatus: 'preparing', frameCount: -1, audioReady: false, transcriptExists: null, lastError: '', extractionLogs: [], wasmFallback: false }));
-
-    // Safety timeout — enable button so it never stays disabled forever.
-    // Extended to 120s because WASM fallback (if triggered) can take ~60s.
+    // Safety timeout: 120s covers WASM download (~30MB) + software HEVC decode
     safetyTimerRef.current = setTimeout(() => {
       safetyTimerRef.current = null;
       timedOut = true;
-      console.warn(`[viralyze:prepare] ⏱ 120s timeout — enabling button (${elapsed()})`);
+      console.warn(`[viralyze:prepare] ⏱ 120s timeout (${elapsed()})`);
       setPrepWarning('הכנת הסרטון לקחה זמן רב. ניתן לנתח עם הנתונים שנאספו.');
       setFramesReady(true);
     }, 120_000);
@@ -111,10 +101,8 @@ function AnalyzeContent() {
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
 
-      appendLog(`reading metadata... (${elapsed()})`);
       const meta = await getVideoMeta(selectedFile);
-      appendLog(`metadata: ${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
-      setDbg(d => ({ ...d, duration: meta.duration, dimensions: `${meta.width}×${meta.height}` }));
+      console.log(`[viralyze:prepare] metadata: ${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
 
       // Thumbnail — 3s timeout
       {
@@ -143,37 +131,28 @@ function AnalyzeContent() {
 
       const { extractAudio } = await import('@/lib/audioExtraction');
 
-      appendLog(`starting browser frame extraction + audio (${elapsed()})`);
-
       const [extracted] = await Promise.all([
-        extractFrames(selectedFile, (current, total) => {
-          setFrameProgress({ current, total });
-        }, appendLog),
+        extractFrames(selectedFile, (current, total) => setFrameProgress({ current, total })),
         Promise.race([
           extractAudio(selectedFile),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
         ]).then((blob) => {
-          appendLog(`audio done — size=${blob?.size ?? 0}B (${elapsed()})`);
           audioBlobRef.current = blob;
-          setDbg(d => ({ ...d, audioReady: blob != null && (blob?.size ?? 0) > 0 }));
         }).catch(() => {
-          appendLog(`audio failed (${elapsed()})`);
           audioBlobRef.current = null;
         }),
       ]);
 
-      appendLog(`browser extraction done: ${extracted.frames.length} frames (${elapsed()})`);
-      setDbg(d => ({ ...d, frameCount: extracted.frames.length }));
+      console.log(`[viralyze:prepare] browser extraction: ${extracted.frames.length} frames (${elapsed()})`);
 
       let finalExtracted = extracted;
 
       // ── WASM FALLBACK ─────────────────────────────────────────────────────
-      // If browser extraction produced 0 frames (HEVC on non-Apple-Silicon Chrome,
-      // or any codec the browser refuses to hardware-decode into canvas), fall back
-      // to browser-side FFmpeg WASM which includes its own software HEVC decoder.
+      // Browser extraction returns 0 frames when the browser has no HEVC hardware
+      // decoder (Chrome on Windows/Intel Mac). FFmpeg WASM has its own software
+      // decoder and handles the file directly, with memory-safe conservative settings.
       if (extracted.frames.length === 0) {
-        appendLog(`0 frames from browser — starting WASM FFmpeg fallback (${elapsed()})`);
-        setDbg(d => ({ ...d, wasmFallback: true }));
+        console.log(`[viralyze:prepare] 0 frames — starting WASM fallback (${elapsed()})`);
         setFrameProgress({ current: 0, total: 1 });
         try {
           const { extractFramesViaFfmpeg } = await import('@/lib/ffmpegFallback');
@@ -181,24 +160,12 @@ function AnalyzeContent() {
             selectedFile,
             meta.duration,
             (current, total) => setFrameProgress({ current, total }),
-            appendLog,
           );
-          appendLog(`WASM done: outputFiles=${wasm.outputFilesCount} extracted=${wasm.extractedFramesCount} (${elapsed()})`);
-          setDbg(d => ({
-            ...d,
-            frameCount: wasm.frames.length,
-            wasmOutputFiles: wasm.outputFilesCount,
-            wasmExtractedFrames: wasm.extractedFramesCount,
-          }));
-          finalExtracted = {
-            ...extracted,
-            frames: wasm.frames,
-            frameTimestamps: wasm.frameTimestamps,
-          };
+          console.log(`[viralyze:prepare] WASM: ${wasm.frames.length} frames (${elapsed()})`);
+          finalExtracted = { ...extracted, frames: wasm.frames, frameTimestamps: wasm.frameTimestamps };
         } catch (wasmErr) {
-          const msg = wasmErr instanceof Error ? wasmErr.message : String(wasmErr);
-          appendLog(`WASM fallback failed: ${msg} (${elapsed()})`);
-          // Continue with 0 frames; handleAnalyze will surface the error
+          console.warn(`[viralyze:prepare] WASM fallback failed: ${wasmErr} (${elapsed()})`);
+          // Continue — handleAnalyze surfaces the 0-frame error
         }
       }
       // ─────────────────────────────────────────────────────────────────────
@@ -214,13 +181,10 @@ function AnalyzeContent() {
         width: meta.width,
         height: meta.height,
       });
-      if (!timedOut) {
-        setFramesReady(true);
-      }
+      if (!timedOut) setFramesReady(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      appendLog(`ERROR: ${msg} (${elapsed()})`);
-      setDbg(d => ({ ...d, lastError: msg }));
+      console.error(`[viralyze:prepare] error: ${msg} (${elapsed()})`);
       clearSafetyTimer();
       if (!timedOut) {
         setPrepWarning(`שגיאה בהכנת הסרטון: ${msg}`);
@@ -267,8 +231,6 @@ function AnalyzeContent() {
       setFramesReady(false);
       setDurationError('');
       setPrepWarning('');
-      setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: selectedFile.type || 'unknown', dimensions: '', extractionLogs: [], wasmFallback: false, wasmOutputFiles: -1, wasmExtractedFrames: -1 });
-
       videoFingerprintRef.current = getVideoFingerprint(selectedFile);
 
       if (!IS_UNLIMITED) {
@@ -300,7 +262,6 @@ function AnalyzeContent() {
     setThumbnailUrl(null);
     setDurationError('');
     setPrepWarning('');
-    setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: '', dimensions: '', extractionLogs: [], wasmFallback: false, wasmOutputFiles: -1, wasmExtractedFrames: -1 });
     audioBlobRef.current = null;
   }, [clearSafetyTimer]);
 
@@ -309,7 +270,6 @@ function AnalyzeContent() {
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze) return;
     setError('');
-    setDbg(d => ({ ...d, analyzeStatus: 'running', lastError: '' }));
     setPhase('scanning');
 
     try {
@@ -375,7 +335,6 @@ function AnalyzeContent() {
       if (finalFrameData.frames.length === 0) {
         const msg = 'לא ניתן לחלץ פריימים מהסרטון. ייתכן שהקובץ פגום או שהפורמט אינו נתמך.';
         setError(msg);
-        setDbg(d => ({ ...d, analyzeStatus: 'error', lastError: msg }));
         setPhase('error');
         return;
       }
@@ -396,7 +355,6 @@ function AnalyzeContent() {
         } catch {
           // Transcription failure is non-fatal — continue with frames-only analysis
         }
-        setDbg(d => ({ ...d, transcriptExists: transcriptData !== null }));
       }
 
       const response = await fetch('/api/analyze', {
@@ -439,7 +397,6 @@ function AnalyzeContent() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה';
       setError(msg);
-      setDbg(d => ({ ...d, analyzeStatus: 'error', lastError: msg }));
       setPhase('error');
     }
   }, [canAnalyze, context, file, frameDataRef, thumbnailUrl, user, plan, router]);
@@ -781,36 +738,6 @@ function AnalyzeContent() {
         )}
 
       </AnimatePresence>
-
-      {/* Debug panel — visible whenever a file is selected */}
-      {file && (
-        <div className="fixed bottom-4 right-4 z-50 text-[10px] font-mono rounded-xl p-3 space-y-0.5 max-w-[260px]"
-          style={{ background: 'rgba(0,0,0,0.88)', border: '1px solid rgba(212,168,67,0.35)', color: 'rgba(255,255,255,0.7)' }}>
-          <div className="font-bold text-[#D4A843] mb-1 text-[11px]">🔍 Debug</div>
-          <div>file: <span className="text-white/60">{file.name.slice(0, 22)}</span></div>
-          <div>type: <span className={dbg.fileType.includes('quicktime') || dbg.fileType.includes('mov') ? 'text-yellow-400' : 'text-white'}>{dbg.fileType || '—'}</span></div>
-          {dbg.dimensions && <div>size: <span className="text-white">{dbg.dimensions}</span></div>}
-          <div>duration: <span className="text-white">{dbg.duration > 0 ? `${dbg.duration.toFixed(1)}s` : '—'}</span></div>
-          <div>frameCount: <span className={dbg.frameCount > 5 ? 'text-green-400' : dbg.frameCount >= 0 ? 'text-yellow-400' : 'text-[#D4A843]'}>{dbg.frameCount >= 0 ? dbg.frameCount : 'extracting…'}</span></div>
-          {dbg.wasmFallback && <div>wasm: <span className="text-cyan-400">ACTIVE</span></div>}
-          {dbg.wasmOutputFiles >= 0 && <div>wasm outputFiles: <span className={dbg.wasmOutputFiles > 0 ? 'text-green-400' : 'text-red-400'}>{dbg.wasmOutputFiles}</span></div>}
-          {dbg.wasmExtractedFrames >= 0 && <div>wasm extractedFrames: <span className={dbg.wasmExtractedFrames > 0 ? 'text-green-400' : 'text-red-400'}>{dbg.wasmExtractedFrames}</span></div>}
-          <div>audioReady: <span className={dbg.audioReady ? 'text-green-400' : 'text-white'}>{String(dbg.audioReady)}</span></div>
-          <div>transcriptExists: <span className={dbg.transcriptExists === true ? 'text-green-400' : dbg.transcriptExists === false ? 'text-orange-400' : 'text-white'}>{dbg.transcriptExists === null ? '—' : String(dbg.transcriptExists)}</span></div>
-          <div>analyzeStatus: <span className={dbg.analyzeStatus === 'error' ? 'text-red-400' : dbg.analyzeStatus === 'done' ? 'text-green-400' : 'text-[#D4A843]'}>{dbg.analyzeStatus}</span></div>
-          {dbg.lastError && <div className="text-red-400 break-all text-[9px] mt-1 leading-tight">{dbg.lastError.slice(0, 160)}</div>}
-          {dbg.extractionLogs.length > 0 && (
-            <div className="mt-1 pt-1 border-t border-white/10">
-              <div className="text-white/35 mb-0.5">extraction log:</div>
-              <div className="space-y-0.5 max-h-[100px] overflow-y-auto">
-                {dbg.extractionLogs.slice(-12).map((line, i) => (
-                  <div key={i} className="text-[9px] text-white/45 leading-tight break-all">{line}</div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Dev-only debug overlay */}
       {process.env.NODE_ENV === 'development' && debugInfo && (
