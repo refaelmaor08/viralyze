@@ -10,6 +10,8 @@ export interface ExtractedFrameData {
   sceneChanges: number[];
   editingPace: 'slow' | 'medium' | 'fast';
   cutsPerSecond: number;
+  logs: string[];
+  isHevc: boolean;
 }
 
 export async function getVideoMeta(file: File): Promise<VideoMeta> {
@@ -107,9 +109,17 @@ function isLikelyBlack(imgData: ImageData): boolean {
 
 export async function extractFrames(
   file: File,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  onLog?: (msg: string) => void,
 ): Promise<ExtractedFrameData> {
   return new Promise((resolve, reject) => {
+    const logs: string[] = [];
+    const log = (msg: string) => {
+      logs.push(msg);
+      console.log(`[viralyze:frames] ${msg}`);
+      onLog?.(msg);
+    };
+
     const video = document.createElement('video');
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -119,12 +129,15 @@ export async function extractFrames(
       return;
     }
 
+    log(`file: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB) type=${file.type || 'unknown'}`);
+
     const url = URL.createObjectURL(file);
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
 
     const metaTimer = setTimeout(() => {
+      log('ERROR: metadata load timeout after 10s');
       URL.revokeObjectURL(url);
       reject(new Error('extractFrames: metadata load timeout'));
     }, 10_000);
@@ -138,24 +151,27 @@ export async function extractFrames(
       canvas.width = W;
       canvas.height = H;
 
-      const hevcSupport = video.canPlayType('video/mp4; codecs="hvc1"') || video.canPlayType('video/mp4; codecs="hev1"');
+      const hevcPlayType = video.canPlayType('video/mp4; codecs="hvc1"') || video.canPlayType('video/mp4; codecs="hev1"');
+      const isMovFile = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov') || file.name.toLowerCase().endsWith('.hevc');
+      const isHevc = isMovFile;
+
       // Cast to boolean to prevent TypeScript from narrowing `video` to `never`
       // in the else branch (the DOM lib includes requestVideoFrameCallback on HTMLVideoElement)
       const rVFCSupport = ('requestVideoFrameCallback' in video) as boolean;
       const method = rVFCSupport ? 'playback+rVFC' : 'seek+rAF';
-      console.log(
-        `[viralyze:frames] file="${file.name}" type=${file.type} ` +
-        `${video.videoWidth}×${video.videoHeight} dur=${dur.toFixed(1)}s ` +
-        `hevc="${hevcSupport || 'no'}" rVFC=${rVFCSupport} method=${method}`
-      );
+
+      log(`metadata: ${video.videoWidth}×${video.videoHeight} dur=${dur.toFixed(1)}s`);
+      log(`codec support: hevc="${hevcPlayType || 'no'}" isMovFile=${isMovFile} rVFC=${rVFCSupport}`);
+      log(`method: ${method}`);
 
       const timestamps = buildTimestamps(dur);
       const total = timestamps.length;
-      console.log(`[viralyze:frames] ${total} frames planned via ${method}`);
+      log(`${total} timestamps planned`);
 
       const frames: string[] = [];
       const frameTimestamps: number[] = [];
       const sceneChanges: number[] = [];
+      let blackCount = 0;
       let prevImageData: ImageData | null = null;
       const SCENE_DIFF_THRESHOLD = 30;
 
@@ -167,8 +183,8 @@ export async function extractFrames(
         const cutsPerSecond = dur > 0 ? parseFloat((sceneChanges.length / dur).toFixed(3)) : 0;
         const editingPace: 'slow' | 'medium' | 'fast' =
           cutsPerSecond > 0.5 ? 'fast' : cutsPerSecond > 0.15 ? 'medium' : 'slow';
-        console.log(`[viralyze:frames] done — ${frames.length} frames, ${sceneChanges.length} cuts`);
-        resolve({ frames, frameTimestamps, sceneChanges, editingPace, cutsPerSecond });
+        log(`done: ${frames.length} frames stored, ${blackCount} black skipped, ${sceneChanges.length} cuts`);
+        resolve({ frames, frameTimestamps, sceneChanges, editingPace, cutsPerSecond, logs, isHevc });
       };
 
       // Shared frame capture logic: draw video to canvas and store if non-black
@@ -182,8 +198,10 @@ export async function extractFrames(
         if (!isLikelyBlack(imgData)) {
           frames.push(canvas.toDataURL('image/jpeg', 0.85));
           frameTimestamps.push(ts);
+          log(`frame at t=${ts.toFixed(1)}s stored (total=${frames.length})`);
         } else {
-          console.warn(`[viralyze:frames] black frame at t=${ts.toFixed(1)}s — skipped`);
+          blackCount++;
+          log(`frame at t=${ts.toFixed(1)}s BLACK — skipped (total black=${blackCount})`);
         }
         onProgress?.(progressIdx + 1, total);
       };
@@ -203,7 +221,7 @@ export async function extractFrames(
         // Hard timeout: (video duration × 2) or 30s minimum, so a 23s video
         // playing at 4× (≈5.75s wall time) has plenty of margin.
         const playbackTimeout = setTimeout(() => {
-          console.warn('[viralyze:frames] playback timeout — returning partial result');
+          log('WARNING: playback timeout — returning partial result');
           video.pause();
           finish();
         }, Math.max(30_000, dur * 2_000));
@@ -211,6 +229,7 @@ export async function extractFrames(
         // When video ends naturally, capture any remaining targets from last frame
         video.onended = () => {
           clearTimeout(playbackTimeout);
+          log('video ended — draining remaining timestamps');
           while (tsIdx < sortedTs.length) {
             storeFrame(sortedTs[tsIdx], tsIdx);
             tsIdx++;
@@ -242,10 +261,16 @@ export async function extractFrames(
         // Play at 4× — most codecs support this; Chrome and Safari both do for HEVC.
         // At 4× a 23s video streams in ~5.75s wall-clock time.
         video.playbackRate = 4;
-        video.play().catch(() => {
-          // Some browsers reject 4× for certain codecs; fall back to 1×
+        log('starting playback at 4×...');
+        video.play().then(() => {
+          log('playback started at 4×');
+        }).catch(() => {
+          log('4× playback rejected — retrying at 1×');
           video.playbackRate = 1;
-          video.play().catch(() => {
+          video.play().then(() => {
+            log('playback started at 1×');
+          }).catch(() => {
+            log('ERROR: playback failed entirely');
             clearTimeout(playbackTimeout);
             finish();
           });
@@ -253,6 +278,7 @@ export async function extractFrames(
 
       } else {
         // ── SEEK MODE (fallback — Firefox and browsers without rVFC) ────────
+        log('using seek+rAF mode (no rVFC support)');
         let idx = 0;
         let seekTimer: ReturnType<typeof setTimeout> | null = null;
         const SEEK_TIMEOUT_MS = 3000;
@@ -264,8 +290,9 @@ export async function extractFrames(
         const next = () => {
           clearSeekTimer();
           if (idx >= total) { finish(); return; }
+          log(`seeking to t=${timestamps[idx].toFixed(1)}s (${idx + 1}/${total})`);
           seekTimer = setTimeout(() => {
-            console.warn(`[viralyze:frames] seek timeout at t=${timestamps[idx]}s — skipping`);
+            log(`seek timeout at t=${timestamps[idx]}s — skipping`);
             onProgress?.(idx + 1, total);
             idx++;
             next();
@@ -275,13 +302,14 @@ export async function extractFrames(
 
         video.onseeked = () => {
           clearSeekTimer();
+          log(`seeked to t=${video.currentTime.toFixed(1)}s`);
           let captureSettled = false;
           let captureAttempt = 0;
 
           const captureGiveUp = setTimeout(() => {
             if (captureSettled) return;
             captureSettled = true;
-            console.warn(`[viralyze:frames] capture giveup at t=${timestamps[idx].toFixed(1)}s`);
+            log(`capture giveup at t=${timestamps[idx].toFixed(1)}s`);
             onProgress?.(idx + 1, total);
             idx++;
             next();
@@ -306,8 +334,10 @@ export async function extractFrames(
             if (!isLikelyBlack(imgData)) {
               frames.push(canvas.toDataURL('image/jpeg', 0.85));
               frameTimestamps.push(timestamps[idx]);
+              log(`frame at t=${timestamps[idx].toFixed(1)}s stored`);
             } else {
-              console.warn(`[viralyze:frames] undecodable at t=${timestamps[idx].toFixed(1)}s — skipped`);
+              blackCount++;
+              log(`frame at t=${timestamps[idx].toFixed(1)}s BLACK — skipped`);
             }
             onProgress?.(idx + 1, total);
             idx++;
@@ -319,6 +349,7 @@ export async function extractFrames(
 
         video.onerror = () => {
           clearSeekTimer();
+          log('ERROR: video error during seek mode');
           finish();
         };
 
@@ -329,9 +360,11 @@ export async function extractFrames(
     video.onerror = () => {
       clearTimeout(metaTimer);
       URL.revokeObjectURL(url);
+      log('ERROR: video element failed to load');
       reject(new Error('לא ניתן לטעון את הסרטון לניתוח'));
     };
 
     video.src = url;
+    log('video element created, loading...');
   });
 }
