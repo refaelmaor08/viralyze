@@ -1,10 +1,16 @@
 import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
 
+// Mutable ref so every call to extractFramesViaFfmpeg gets its logs forwarded,
+// even though the FFmpeg instance (and its log listener) is created only once.
+let currentOnLog: ((msg: string) => void) | undefined;
+
 let ffmpegInstance: FFmpegType | null = null;
 let loadPromise: Promise<void> | null = null;
 
 const CORE_VERSION = '0.12.6';
 const CDN_BASE = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CORE_VERSION}/dist/umd`;
+
+interface FSNode { isDir: boolean; name: string; }
 
 async function toBlobURL(url: string, mimeType: string): Promise<string> {
   const resp = await fetch(url);
@@ -13,26 +19,24 @@ async function toBlobURL(url: string, mimeType: string): Promise<string> {
   return URL.createObjectURL(new Blob([buf], { type: mimeType }));
 }
 
-async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpegType> {
+async function getFFmpeg(): Promise<FFmpegType> {
   if (ffmpegInstance) return ffmpegInstance;
 
   if (!loadPromise) {
     loadPromise = (async () => {
       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
       const ff = new FFmpeg();
+      // Log ALL messages — no filter — so we can see codec errors
       ff.on('log', ({ message }: { type: string; message: string }) => {
-        // Suppress noisy build-info lines from FFmpeg
-        if (message && !message.match(/^(ffmpeg version|built with|lib(avcodec|avformat|avutil|swresample|swscale|postproc))/)) {
-          onLog?.(`ffmpeg: ${message}`);
-        }
+        if (message) currentOnLog?.(`ffmpeg: ${message}`);
       });
-      onLog?.('downloading FFmpeg WASM (~30MB, cached after first use)...');
+      currentOnLog?.('downloading FFmpeg WASM (~30MB, cached after first use)...');
       await ff.load({
         coreURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript'),
         wasmURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm'),
       });
       ffmpegInstance = ff;
-      onLog?.('FFmpeg WASM ready');
+      currentOnLog?.('FFmpeg WASM ready');
     })();
   }
 
@@ -40,8 +44,6 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpegType> {
   return ffmpegInstance!;
 }
 
-// Mirror of buildTimestamps() from videoFrames.ts so WASM extraction
-// produces the same density of frames as the browser path.
 function buildTimestamps(dur: number): number[] {
   const maxFrames = dur <= 60 ? 20 : dur <= 120 ? 30 : 40;
   const timestamps: number[] = [];
@@ -74,68 +76,121 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+export interface FfmpegExtractionResult {
+  frames: string[];
+  frameTimestamps: number[];
+  outputFilesCount: number;
+  extractedFramesCount: number;
+}
+
 export async function extractFramesViaFfmpeg(
   file: File,
   duration: number,
   onProgress?: (current: number, total: number) => void,
   onLog?: (msg: string) => void,
-): Promise<{ frames: string[]; frameTimestamps: number[] }> {
+): Promise<FfmpegExtractionResult> {
+  // Bind the log handler before loading/using the instance
+  currentOnLog = onLog;
+
   const log = (msg: string) => {
     console.log(`[viralyze:wasm] ${msg}`);
     onLog?.(msg);
   };
 
-  const ffmpeg = await getFFmpeg(log);
+  log('getFFmpeg...');
+  const ffmpeg = await getFFmpeg();
 
-  log(`writing ${(file.size / 1024 / 1024).toFixed(1)}MB to WASM virtual FS...`);
+  log(`writing ${(file.size / 1024 / 1024).toFixed(1)}MB to WASM FS...`);
   const { fetchFile } = await import('@ffmpeg/util');
   await ffmpeg.writeFile('input', await fetchFile(file));
   log('input written');
 
+  // ── Phase 1: probe one frame to verify HEVC decoding works ──────────────
+  log('phase 1: probing single frame...');
+  const probeRet = await ffmpeg.exec([
+    '-i', 'input',
+    '-vframes', '1',
+    '-q:v', '4',
+    '-vf', 'scale=480:-2',
+    'probe.jpg',
+  ]);
+  log(`probe exit code: ${probeRet}`);
+
+  // List entire VFS so we can see what FFmpeg actually wrote
+  const vfsNodes: FSNode[] = await ffmpeg.listDir('/');
+  const vfsFiles = vfsNodes.filter(n => !n.isDir);
+  log(`VFS contents: [${vfsFiles.map(n => n.name).join(', ') || 'empty'}]`);
+
+  let probeBytes = 0;
+  try {
+    const probeData = await ffmpeg.readFile('probe.jpg') as Uint8Array<ArrayBuffer>;
+    probeBytes = probeData.length;
+    log(`probe.jpg: ${probeBytes} bytes`);
+    await ffmpeg.deleteFile('probe.jpg').catch(() => {});
+  } catch (e) {
+    log(`probe.jpg read failed: ${String(e)}`);
+  }
+
+  if (probeBytes < 100) {
+    log('probe frame empty — HEVC decode unavailable in this WASM build');
+    await ffmpeg.deleteFile('input').catch(() => {});
+    return { frames: [], frameTimestamps: [], outputFilesCount: 0, extractedFramesCount: 0 };
+  }
+
+  log(`probe OK (${probeBytes}B) — proceeding to full extraction`);
+
+  // ── Phase 2: full extraction ─────────────────────────────────────────────
   const timestamps = buildTimestamps(duration);
   const maxFrames = timestamps.length;
-  log(`extracting frames via fps filter (target: ${maxFrames})...`);
-
-  // Single-pass decode: extract ~2 frames/sec for short videos, 1fps for longer ones.
-  // FFmpeg's software HEVC decoder handles this natively.
   const fps = duration <= 60 ? 2 : 1;
+  log(`phase 2: fps=${fps}, target=${maxFrames} frames`);
+
   const ret = await ffmpeg.exec([
     '-i', 'input',
     '-vf', `fps=${fps},scale=480:-2`,
     '-q:v', '4',
     'frame_%04d.jpg',
   ]);
+  log(`full extraction exit code: ${ret}`);
 
-  if (ret !== 0) {
-    log(`WARNING: FFmpeg exited with code ${ret}`);
-  }
+  // Enumerate actual output files — don't guess names
+  const vfsAfter: FSNode[] = await ffmpeg.listDir('/');
+  const jpegFiles = vfsAfter
+    .filter(n => !n.isDir && /^frame_\d+\.jpg$/.test(n.name))
+    .map(n => n.name)
+    .sort();
+  log(`output files: ${jpegFiles.length} — [${jpegFiles.slice(0, 10).join(', ')}${jpegFiles.length > 10 ? '…' : ''}]`);
 
   const frames: string[] = [];
   const frameTimestamps: number[] = [];
 
-  // Read frames until readFile throws (no more output files).
-  for (let i = 1; i <= maxFrames + 20; i++) {
-    const name = `frame_${String(i).padStart(4, '0')}.jpg`;
+  for (let idx = 0; idx < jpegFiles.length && frames.length < maxFrames; idx++) {
+    const fname = jpegFiles[idx];
     try {
-      const data = await ffmpeg.readFile(name) as Uint8Array<ArrayBuffer>;
-      if (!data || data.length < 100) break;
-      const blob = new Blob([data], { type: 'image/jpeg' });
-      frames.push(await blobToDataUrl(blob));
-      // Frame i (1-indexed) appears at t = (i-1)/fps seconds in the output
-      frameTimestamps.push(Math.min(parseFloat(((i - 1) / fps).toFixed(1)), duration));
-      await ffmpeg.deleteFile(name).catch(() => {});
-    } catch {
-      break;
+      const data = await ffmpeg.readFile(fname) as Uint8Array<ArrayBuffer>;
+      log(`${fname}: ${data.length}B`);
+      if (data.length >= 100) {
+        const blob = new Blob([data], { type: 'image/jpeg' });
+        frames.push(await blobToDataUrl(blob));
+        // Frame idx+1 at fps output corresponds to (idx)/fps seconds
+        frameTimestamps.push(Math.min(parseFloat((idx / fps).toFixed(1)), duration));
+      } else {
+        log(`${fname} too small — skipped`);
+      }
+      await ffmpeg.deleteFile(fname).catch(() => {});
+    } catch (e) {
+      log(`read ${fname} failed: ${String(e)}`);
     }
-    onProgress?.(Math.min(i, maxFrames), maxFrames);
-    log(`WASM frame ${i} stored`);
+    onProgress?.(Math.min(idx + 1, maxFrames), maxFrames);
   }
 
   await ffmpeg.deleteFile('input').catch(() => {});
-  log(`WASM done: ${frames.length} frames`);
+  log(`done: outputFiles=${jpegFiles.length} extractedFrames=${frames.length}`);
 
   return {
-    frames: frames.slice(0, maxFrames),
-    frameTimestamps: frameTimestamps.slice(0, maxFrames),
+    frames,
+    frameTimestamps,
+    outputFilesCount: jpegFiles.length,
+    extractedFramesCount: frames.length,
   };
 }

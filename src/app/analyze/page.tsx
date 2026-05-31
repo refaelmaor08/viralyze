@@ -41,7 +41,7 @@ function AnalyzeContent() {
     platforms: ['instagram'],
   });
   const [debugInfo, setDebugInfo] = useState<{ fingerprint: string; duration: number; cacheHit: boolean; aiMode: string } | null>(null);
-  const [dbg, setDbg] = useState({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null as boolean | null, analyzeStatus: 'idle' as 'idle'|'preparing'|'running'|'done'|'error', lastError: '', fileType: '', dimensions: '', extractionLogs: [] as string[], wasmFallback: false });
+  const [dbg, setDbg] = useState({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null as boolean | null, analyzeStatus: 'idle' as 'idle'|'preparing'|'running'|'done'|'error', lastError: '', fileType: '', dimensions: '', extractionLogs: [] as string[], wasmFallback: false, wasmOutputFiles: -1, wasmExtractedFrames: -1 });
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
@@ -183,8 +183,13 @@ function AnalyzeContent() {
             (current, total) => setFrameProgress({ current, total }),
             appendLog,
           );
-          appendLog(`WASM done: ${wasm.frames.length} frames (${elapsed()})`);
-          setDbg(d => ({ ...d, frameCount: wasm.frames.length }));
+          appendLog(`WASM done: outputFiles=${wasm.outputFilesCount} extracted=${wasm.extractedFramesCount} (${elapsed()})`);
+          setDbg(d => ({
+            ...d,
+            frameCount: wasm.frames.length,
+            wasmOutputFiles: wasm.outputFilesCount,
+            wasmExtractedFrames: wasm.extractedFramesCount,
+          }));
           finalExtracted = {
             ...extracted,
             frames: wasm.frames,
@@ -262,7 +267,7 @@ function AnalyzeContent() {
       setFramesReady(false);
       setDurationError('');
       setPrepWarning('');
-      setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: selectedFile.type || 'unknown', dimensions: '', extractionLogs: [], wasmFallback: false });
+      setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: selectedFile.type || 'unknown', dimensions: '', extractionLogs: [], wasmFallback: false, wasmOutputFiles: -1, wasmExtractedFrames: -1 });
 
       videoFingerprintRef.current = getVideoFingerprint(selectedFile);
 
@@ -295,7 +300,7 @@ function AnalyzeContent() {
     setThumbnailUrl(null);
     setDurationError('');
     setPrepWarning('');
-    setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: '', dimensions: '', extractionLogs: [], wasmFallback: false });
+    setDbg({ duration: 0, frameCount: -1, audioReady: false, transcriptExists: null, analyzeStatus: 'idle', lastError: '', fileType: '', dimensions: '', extractionLogs: [], wasmFallback: false, wasmOutputFiles: -1, wasmExtractedFrames: -1 });
     audioBlobRef.current = null;
   }, [clearSafetyTimer]);
 
@@ -788,6 +793,8 @@ function AnalyzeContent() {
           <div>duration: <span className="text-white">{dbg.duration > 0 ? `${dbg.duration.toFixed(1)}s` : '—'}</span></div>
           <div>frameCount: <span className={dbg.frameCount > 5 ? 'text-green-400' : dbg.frameCount >= 0 ? 'text-yellow-400' : 'text-[#D4A843]'}>{dbg.frameCount >= 0 ? dbg.frameCount : 'extracting…'}</span></div>
           {dbg.wasmFallback && <div>wasm: <span className="text-cyan-400">ACTIVE</span></div>}
+          {dbg.wasmOutputFiles >= 0 && <div>wasm outputFiles: <span className={dbg.wasmOutputFiles > 0 ? 'text-green-400' : 'text-red-400'}>{dbg.wasmOutputFiles}</span></div>}
+          {dbg.wasmExtractedFrames >= 0 && <div>wasm extractedFrames: <span className={dbg.wasmExtractedFrames > 0 ? 'text-green-400' : 'text-red-400'}>{dbg.wasmExtractedFrames}</span></div>}
           <div>audioReady: <span className={dbg.audioReady ? 'text-green-400' : 'text-white'}>{String(dbg.audioReady)}</span></div>
           <div>transcriptExists: <span className={dbg.transcriptExists === true ? 'text-green-400' : dbg.transcriptExists === false ? 'text-orange-400' : 'text-white'}>{dbg.transcriptExists === null ? '—' : String(dbg.transcriptExists)}</span></div>
           <div>analyzeStatus: <span className={dbg.analyzeStatus === 'error' ? 'text-red-400' : dbg.analyzeStatus === 'done' ? 'text-green-400' : 'text-[#D4A843]'}>{dbg.analyzeStatus}</span></div>
