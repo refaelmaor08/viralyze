@@ -125,6 +125,10 @@ async function attemptExtraction(
   return { frames, frameTimestamps };
 }
 
+// Target frame counts matched to the browser extraction path's normalised output.
+const PRIMARY_TARGET  = 12; // matches MAX_AI_FRAMES in frameNormalize.ts
+const FALLBACK_TARGET =  8;
+
 export async function extractFramesViaFfmpeg(
   file: File,
   duration: number,
@@ -134,10 +138,18 @@ export async function extractFramesViaFfmpeg(
   currentOnLog = onLog;
   const log = (msg: string) => { console.log(`[viralyze:wasm] ${msg}`); onLog?.(msg); };
 
-  // Conservative settings to stay within WASM memory limits on large HEVC files.
-  // fps=0.3 → ~1 frame every 3s; 360px wide; q=15 (low quality JPEG = small output).
-  const PRIMARY: AttemptOpts  = { fps: 0.3, scale: 'scale=360:-1', maxFrames: 8,  quality: 15 };
-  const FALLBACK: AttemptOpts = { fps: 0.2, scale: 'scale=240:-1', maxFrames: 5,  quality: 20 };
+  // Compute fps to yield roughly the target number of frames from this duration.
+  // Clamp to a safe range: 0.08 fps (1 frame/12s) … 2 fps (120 frames/min).
+  const safeDur = Math.max(duration, 1);
+  const primaryFps  = parseFloat(Math.max(0.08, Math.min(2.0, PRIMARY_TARGET  / safeDur)).toFixed(3));
+  const fallbackFps = parseFloat(Math.max(0.06, Math.min(1.5, FALLBACK_TARGET / safeDur)).toFixed(3));
+
+  // 480px matches the browser canvas width → consistent resolution for GPT.
+  // quality=5 (FFmpeg JPEG 1-31 scale, lower = better) ≈ browser canvas 0.85.
+  // Memory note: WASM OOM comes from the HEVC decode pipeline, not output size,
+  // so upgrading from 360→480px and q=15→q=5 does not meaningfully increase peak heap.
+  const PRIMARY: AttemptOpts  = { fps: primaryFps,  scale: 'scale=480:-1', maxFrames: PRIMARY_TARGET,  quality: 5  };
+  const FALLBACK: AttemptOpts = { fps: fallbackFps, scale: 'scale=360:-1', maxFrames: FALLBACK_TARGET, quality: 10 };
 
   // ── Primary attempt ────────────────────────────────────────────────────────
   try {

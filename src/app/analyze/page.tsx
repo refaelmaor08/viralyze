@@ -100,6 +100,7 @@ function AnalyzeContent() {
 
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
+      const { normalizeFramesForAI, computePacingFromFrames } = await import('@/lib/frameNormalize');
 
       const meta = await getVideoMeta(selectedFile);
       console.log(`[viralyze:prepare] metadata: ${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
@@ -145,12 +146,18 @@ function AnalyzeContent() {
 
       console.log(`[viralyze:prepare] browser extraction: ${extracted.frames.length} frames (${elapsed()})`);
 
-      let finalExtracted = extracted;
+      let finalFrames    = extracted.frames;
+      let finalTs        = extracted.frameTimestamps;
+      let finalScene     = extracted.sceneChanges;
+      let finalPace      = extracted.editingPace;
+      let finalCuts      = extracted.cutsPerSecond;
+      let extractionPath = 'browser';
 
       // ── WASM FALLBACK ─────────────────────────────────────────────────────
       // Browser extraction returns 0 frames when the browser has no HEVC hardware
       // decoder (Chrome on Windows/Intel Mac). FFmpeg WASM has its own software
-      // decoder and handles the file directly, with memory-safe conservative settings.
+      // decoder and handles the file directly, targeting the same frame count as
+      // the normalised browser path (MAX_AI_FRAMES = 12).
       if (extracted.frames.length === 0) {
         console.log(`[viralyze:prepare] 0 frames — starting WASM fallback (${elapsed()})`);
         setFrameProgress({ current: 0, total: 1 });
@@ -162,7 +169,17 @@ function AnalyzeContent() {
             (current, total) => setFrameProgress({ current, total }),
           );
           console.log(`[viralyze:prepare] WASM: ${wasm.frames.length} frames (${elapsed()})`);
-          finalExtracted = { ...extracted, frames: wasm.frames, frameTimestamps: wasm.frameTimestamps };
+          if (wasm.frames.length > 0) {
+            // Compute scene-change data from the WASM frames since the browser
+            // extraction returned nothing and therefore has no pacing data.
+            const pacing = await computePacingFromFrames(wasm.frames, wasm.frameTimestamps, meta.duration);
+            finalFrames    = wasm.frames;
+            finalTs        = wasm.frameTimestamps;
+            finalScene     = pacing.sceneChanges;
+            finalPace      = pacing.editingPace;
+            finalCuts      = pacing.cutsPerSecond;
+            extractionPath = 'wasm';
+          }
         } catch (wasmErr) {
           console.warn(`[viralyze:prepare] WASM fallback failed: ${wasmErr} (${elapsed()})`);
           // Continue — handleAnalyze surfaces the 0-frame error
@@ -170,13 +187,31 @@ function AnalyzeContent() {
       }
       // ─────────────────────────────────────────────────────────────────────
 
+      // ── FRAME NORMALISATION ───────────────────────────────────────────────
+      // Cap both paths to MAX_AI_FRAMES (12) with the same hook+body+end
+      // timestamp distribution so desktop and mobile send identical frame counts
+      // and coverage patterns to the AI.
+      const norm = normalizeFramesForAI(finalFrames, finalTs, meta.duration);
+      finalFrames = norm.frames;
+      finalTs     = norm.frameTimestamps;
+      // ─────────────────────────────────────────────────────────────────────
+
+      // Internal consistency log — compare in browser devtools across devices.
+      console.log(
+        `[viralyze:consistency] path=${extractionPath}` +
+        ` frames=${finalFrames.length}` +
+        ` ts=[${finalTs.slice(0, 4).map((t) => t.toFixed(1)).join(',')}…]` +
+        ` pace=${finalPace} cuts/s=${finalCuts.toFixed(2)}` +
+        ` transcript=${audioBlobRef.current !== null}`
+      );
+
       clearSafetyTimer();
       setFrameDataRef({
-        frames: finalExtracted.frames,
-        frameTimestamps: finalExtracted.frameTimestamps,
-        sceneChanges: finalExtracted.sceneChanges,
-        editingPace: finalExtracted.editingPace,
-        cutsPerSecond: finalExtracted.cutsPerSecond,
+        frames: finalFrames,
+        frameTimestamps: finalTs,
+        sceneChanges: finalScene,
+        editingPace: finalPace,
+        cutsPerSecond: finalCuts,
         duration: meta.duration,
         width: meta.width,
         height: meta.height,
