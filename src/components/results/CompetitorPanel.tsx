@@ -38,7 +38,7 @@ export default function CompetitorPanel({ onAnalyze }: CompetitorPanelProps) {
           <Search className="w-5 h-5 text-[#D4A843]" />
         </div>
         <p className="text-sm text-white/50 mb-4 text-right">
-          הדבק תוכן של מתחרים — Hooks, כיתובים, כמות צפיות, תיאורי סרטונים. ה-AI יסביר למה הם מצליחים יותר ואילו דפוסים פסיכולוגיים הם משתמשים.
+          הדבק תוכן של מתחרים — פתיחות, כיתובים, כמות צפיות, תיאורי סרטונים. ה-AI יסביר למה הם מצליחים יותר ואילו דפוסים פסיכולוגיים הם משתמשים.
         </p>
 
         <textarea

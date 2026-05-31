@@ -71,7 +71,7 @@ export default function PerceptionGapResult({ gap, onContinue }: Props) {
             className="w-1.5 h-1.5 rounded-full bg-green-400"
           />
           <span className="text-green-400 text-xs font-bold tracking-widest uppercase">
-            שלב 2 הושלם — Perception Gap
+            שלב 2 הושלם — פער תפיסה
           </span>
         </div>
       </motion.div>

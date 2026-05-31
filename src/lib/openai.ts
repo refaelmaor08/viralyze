@@ -45,7 +45,7 @@ ${isHe ? `חובה להגיב בעברית ישראלית מודרנית ויש�
 אסור: "ההוק הראשוני אינו מייצר אינטראקציה מספקת" — מותר: "הפתיחה לא תופסת את העין, תוך שתי שניות כבר עוברים הלאה"
 אסור: "קיימת בעיה בפוטנציאל הוויראליות" — מותר: "הסרטון הזה לא יקבל פוש — אין סיבה לשתף אותו"
 אסור: "מומלץ לשפר את רמת האנרגיה" — מותר: "נראה עייף בפריים — תדבר כאילו זה הדבר הכי מרגש שקרה לך היום"
-מותר ב-JSON keys ובמונחי מקצוע כמו Hook, CTA, B-Roll — אסור אנגלית בגוף הניתוח.` : 'RESPOND ENTIRELY IN ENGLISH.'}`;
+אסור לחלוטין להשתמש במילים אנגליות בגוף הניתוח. תרגם הכל לעברית: פתיחה במקום Hook, קריאה לפעולה במקום CTA, חומר רקע במקום B-Roll.` : 'RESPOND ENTIRELY IN ENGLISH.'}`;
 }
 
 const platformLabels: Record<string, string> = {
@@ -173,7 +173,7 @@ function deframeArr(arr: string[], timestamps: number[], dur: number, isHe: bool
   return arr.map((s) => deframe(s, timestamps, dur, isHe));
 }
 
-function buildTranscriptSection(t: TranscriptData | null | undefined): string {
+function buildTranscriptSection(t: TranscriptData | null | undefined, isHe = false): string {
   if (!t) return '';
 
   if (!t.hasSpeech) {
@@ -225,7 +225,7 @@ RULE 5 — TRANSCRIPT EVIDENCE (mandatory):
 ▸ hookStrength: if first 3s had speech "${t.hookWords || 'NONE'}" — does this hook pull the viewer in?
 ▸ If hookWords is empty: penalize hookStrength (viewer hears nothing in the critical first 3 seconds)
 ▸ pacingIssues: cite any detected silence periods by name (e.g. "1.5s silence at 6.0s")
-▸ If no CTA words detected: explicitly note "אין CTA ברור" or "no clear CTA" in weaknesses
+▸ If no CTA words detected: explicitly note "${isHe ? 'אין קריאה לפעולה ברורה' : 'no clear CTA'}" in weaknesses
 ▸ Speaking speed ${t.speakingSpeedWpm} WPM must inform pacing score — do not contradict this measured value
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
@@ -233,6 +233,7 @@ RULE 5 — TRANSCRIPT EVIDENCE (mandatory):
 function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null): string {
   const dur = Math.round(frameData.duration);
   const durFormatted = formatSec(dur);
+  const isHe = context.language === 'hebrew';
   const platformStr = (context.platforms ?? [])
     .map((p) => platformLabels[p] ?? p)
     .join(', ') || 'Instagram Reels';
@@ -273,10 +274,10 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, tra
     ? context.goals.map((g) => goalLabels[g] || g).join(', ')
     : '';
 
-  const transcriptSection = buildTranscriptSection(transcriptData);
+  const transcriptSection = buildTranscriptSection(transcriptData, isHe);
 
   const lowFrameWarning = frameCount < 5
-    ? `\n⚠️ VERY FEW FRAMES (${frameCount}): The video format may have caused partial extraction (e.g. HEVC/H.265 on an unsupported browser). Score conservatively — write "Limited visual data" rather than inventing observations. Do NOT give scores of 1 unless you have genuine evidence of failure.\n`
+    ? `\n⚠️ VERY FEW FRAMES (${frameCount}): The video format may have caused partial extraction (e.g. HEVC/H.265 on an unsupported browser). Score conservatively — write "${isHe ? 'נתוני ויזואל מוגבלים' : 'Limited visual data'}" rather than inventing observations. Do NOT give scores of 1 unless you have genuine evidence of failure.\n`
     : '';
 
   return `You are analyzing a ${dur}-second short-form video for ${platformStr}.
@@ -305,7 +306,7 @@ This video is ${dur} seconds long. It ends at ${durFormatted}.
 ▸ In "timeline": every "seconds" value MUST be ≤ ${dur}. The last entry must be ≤ ${dur}.
 ▸ In ALL text fields: NEVER write any number > ${dur} in a seconds/time context.
 ▸ Forbidden examples for this video: "20-35 seconds", "0:22", "${dur + 5} seconds", "after second ${dur + 1}".
-▸ If you cannot pinpoint the exact second from the frames, describe it as "near the opening" / "mid-video" / "near the end" — no invented numbers.
+▸ If you cannot pinpoint the exact second from the frames, describe it as ${isHe ? '"בתחילת הסרטון" / "באמצע" / "לקראת הסוף"' : '"near the opening" / "mid-video" / "near the end"'} — no invented numbers.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 2 — NO CONTENT TYPE LABELS
 Do NOT classify or label this video as an ad, UGC, organic content, showcase, etc.
@@ -313,7 +314,7 @@ Analyze purely what you SEE — lighting, motion, text, energy, composition. Not
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 3 — FRAME EVIDENCE ONLY
 Every strength and weakness MUST start with the frame it is based on (e.g., "Frame 1:" or "Frame 3:").
-If you cannot observe something directly in the frames, write "Not enough evidence from the frames."
+If you cannot observe something directly in the frames, write "${isHe ? 'אין מספיק עדויות מהפריימים לאמירה זו.' : 'Not enough evidence from the frames.'}"
 Do NOT invent observations. Do NOT assume what happens between frames.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 4 — STRICT HOOK SCORING
@@ -357,7 +358,7 @@ Return VALID JSON in this exact structure:
       "..."
     ],
     "attentionDropPoints": [
-      "<describe WHERE in the video attention likely drops — use 'early', 'mid-video', 'near the end', or a frame number. NEVER invent a timestamp beyond ${dur}s>"
+      "<describe WHERE in the video attention likely drops — use ${isHe ? "'בתחילה', 'באמצע', 'לקראת הסוף'" : "'early', 'mid-video', 'near the end'"}, or a frame number. NEVER invent a timestamp beyond ${dur}s>"
     ],
     "pacingIssues": ["<frame-referenced pacing observations only>"],
     "genericElements": ["<what feels templated or generic, based on frames>"],

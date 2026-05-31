@@ -67,10 +67,10 @@ function SuggestionCard({ icon: Icon, title, items, delay = 0 }: {
 export default function SuggestionsPanel({ suggestions }: { suggestions: AnalysisSuggestions }) {
   return (
     <div className="space-y-5">
-      <SuggestionCard icon={Play} title="Hooks טובים יותר" items={suggestions.betterHooks} delay={0} />
+      <SuggestionCard icon={Play} title="פתיחות מושכות יותר" items={suggestions.betterHooks} delay={0} />
       <SuggestionCard icon={MessageSquare} title="פתיחים טובים יותר" items={suggestions.betterOpeningLines} delay={0.1} />
       <SuggestionCard icon={ArrowLeft} title="כיתובים טובים יותר" items={suggestions.betterCaptions} delay={0.15} />
-      <SuggestionCard icon={Target} title="CTAs טובים יותר" items={suggestions.betterCTAs} delay={0.2} />
+      <SuggestionCard icon={Target} title="קריאות לפעולה טובות יותר" items={suggestions.betterCTAs} delay={0.2} />
       <SuggestionCard icon={Lightbulb} title="טריגרים רגשיים להוסיף" items={suggestions.emotionalTriggers} delay={0.25} />
       {suggestions.thumbnailIdeas?.length > 0 && (
         <SuggestionCard icon={MessageSquare} title="רעיונות לתמונת שער" items={suggestions.thumbnailIdeas} delay={0.3} />

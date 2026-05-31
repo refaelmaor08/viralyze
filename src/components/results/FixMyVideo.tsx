@@ -9,13 +9,13 @@ interface FixMyVideoProps {
 }
 
 const typeConfig = {
-  cut: { icon: Scissors, color: '#ef4444', bg: 'rgba(239,68,68,0.08)', label: 'CUT' },
-  zoom: { icon: ZoomIn, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', label: 'ZOOM' },
-  subtitle: { icon: Type, color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)', label: 'SUBTITLE' },
-  speedup: { icon: FastForward, color: '#f97316', bg: 'rgba(249,115,22,0.08)', label: 'SPEED' },
-  music: { icon: Music, color: '#06b6d4', bg: 'rgba(6,182,212,0.08)', label: 'MUSIC' },
-  emotion: { icon: Heart, color: '#ec4899', bg: 'rgba(236,72,153,0.08)', label: 'EMOTION' },
-  transition: { icon: Shuffle, color: '#D4A843', bg: 'rgba(212,168,67,0.08)', label: 'TRANSITION' },
+  cut: { icon: Scissors, color: '#ef4444', bg: 'rgba(239,68,68,0.08)', label: 'גזירה' },
+  zoom: { icon: ZoomIn, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', label: 'זום' },
+  subtitle: { icon: Type, color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)', label: 'כתובית' },
+  speedup: { icon: FastForward, color: '#f97316', bg: 'rgba(249,115,22,0.08)', label: 'האצה' },
+  music: { icon: Music, color: '#06b6d4', bg: 'rgba(6,182,212,0.08)', label: 'מוזיקה' },
+  emotion: { icon: Heart, color: '#ec4899', bg: 'rgba(236,72,153,0.08)', label: 'רגש' },
+  transition: { icon: Shuffle, color: '#D4A843', bg: 'rgba(212,168,67,0.08)', label: 'מעבר' },
 };
 
 export default function FixMyVideo({ suggestions }: FixMyVideoProps) {

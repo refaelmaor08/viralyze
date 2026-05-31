@@ -24,7 +24,7 @@ const ISSUE_LABELS: Record<MomentIssue, string> = {
   'hook-weak':      'הוק חלש',
   'payoff-late':    'תמורה מאוחרת',
   'dead-air':       'ריק',
-  'cta-weak':       'CTA חלש',
+  'cta-weak':       'קריאה לפעולה חלשה',
 };
 
 function formatSec(s: number): string {
@@ -155,7 +155,7 @@ export default function TimelineResult({ analysis, onContinue }: Props) {
             className="w-1.5 h-1.5 rounded-full bg-green-400"
           />
           <span className="text-green-400 text-xs font-bold tracking-widest uppercase">
-            שלב 4 הושלם — Timeline Analysis
+            שלב 4 הושלם — ניתוח ציר הזמן
           </span>
         </div>
       </motion.div>

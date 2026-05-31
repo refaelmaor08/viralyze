@@ -123,7 +123,7 @@ export default function UnderstandingResult({ understanding, userSelectedType, o
             transition={{ duration: 1.5, repeat: Infinity }}
             className="w-1.5 h-1.5 rounded-full bg-green-400"
           />
-          <span className="text-green-400 text-xs font-bold tracking-widest uppercase">שלב 1 הושלם — Video Understanding</span>
+          <span className="text-green-400 text-xs font-bold tracking-widest uppercase">שלב 1 הושלם — הבנת הסרטון</span>
         </div>
       </motion.div>
 
@@ -165,7 +165,7 @@ export default function UnderstandingResult({ understanding, userSelectedType, o
               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
               style={{ background: primary.bg, color: primary.color, border: `1px solid ${primary.color}30` }}
             >
-              {understanding.primaryType}
+              {primary.heLabel}
             </div>
           </motion.div>
 

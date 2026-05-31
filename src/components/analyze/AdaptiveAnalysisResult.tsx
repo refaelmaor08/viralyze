@@ -12,8 +12,8 @@ const AUTO_PROCEED_SECONDS = 7;
 const PROFILE: Record<AnalysisProfileType, {
   emoji: string; label: string; desc: string; color: string; bg: string; border: string;
 }> = {
-  conversion:   { emoji: '💰', label: 'ניתוח המרה',     desc: 'מנותח כתוכן פרסומי — ממוקד בהמרה, שכנוע ו-CTA',          color: '#D4A843', bg: 'rgba(212,168,67,0.07)',   border: 'rgba(212,168,67,0.22)' },
-  authenticity: { emoji: '💎', label: 'ניתוח אותנטיות', desc: 'מנותח כ-UGC — ממוקד באותנטיות, אמון וריאליזם',           color: '#22c55e', bg: 'rgba(34,197,94,0.07)',    border: 'rgba(34,197,94,0.22)'  },
+  conversion:   { emoji: '💰', label: 'ניתוח המרה',     desc: 'מנותח כתוכן פרסומי — ממוקד בהמרה, שכנוע וקריאה לפעולה',  color: '#D4A843', bg: 'rgba(212,168,67,0.07)',   border: 'rgba(212,168,67,0.22)' },
+  authenticity: { emoji: '💎', label: 'ניתוח אותנטיות', desc: 'מנותח כתוכן גולשים — ממוקד באותנטיות, אמון וריאליזם',    color: '#22c55e', bg: 'rgba(34,197,94,0.07)',    border: 'rgba(34,197,94,0.22)'  },
   virality:     { emoji: '🔥', label: 'ניתוח ויראליות', desc: 'מנותח כתוכן טרנד — ממוקד בוויראליות, עצירת גלילה וממכריות', color: '#ef4444', bg: 'rgba(239,68,68,0.07)',    border: 'rgba(239,68,68,0.22)'  },
   connection:   { emoji: '❤️', label: 'ניתוח חיבור',    desc: 'מנותח כסיפור — ממוקד בחיבור רגשי, נרטיב ועוצמת המסר',  color: '#f472b6', bg: 'rgba(244,114,182,0.07)', border: 'rgba(244,114,182,0.22)'},
   value:        { emoji: '🎓', label: 'ניתוח ערך',      desc: 'מנותח כתוכן חינוכי — ממוקד בערך, בהירות ויישומיות',     color: '#38bdf8', bg: 'rgba(56,189,248,0.07)',   border: 'rgba(56,189,248,0.22)' },
@@ -113,7 +113,7 @@ export default function AdaptiveAnalysisResult({ analysis, onContinue }: Props) 
             className="w-1.5 h-1.5 rounded-full bg-green-400"
           />
           <span className="text-green-400 text-xs font-bold tracking-widest uppercase">
-            שלב 5 הושלם — Adaptive Analysis
+            שלב 5 הושלם — ניתוח מותאם
           </span>
         </div>
       </motion.div>

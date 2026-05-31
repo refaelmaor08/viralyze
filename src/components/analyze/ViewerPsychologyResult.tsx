@@ -124,7 +124,7 @@ export default function ViewerPsychologyResult({ psychology, onContinue }: Props
             className="w-1.5 h-1.5 rounded-full bg-green-400"
           />
           <span className="text-green-400 text-xs font-bold tracking-widest uppercase">
-            שלב 3 הושלם — Viewer Psychology
+            שלב 3 הושלם — פסיכולוגיית הצופה
           </span>
         </div>
       </motion.div>
