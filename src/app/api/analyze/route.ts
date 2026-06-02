@@ -62,6 +62,9 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await analyzeVideo(frameData, context, transcriptData ?? null);
+    if (process.env.DEV_MODE !== 'true') {
+      delete result._debug;
+    }
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

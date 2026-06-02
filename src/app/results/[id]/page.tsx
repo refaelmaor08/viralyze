@@ -13,6 +13,9 @@ import SuggestionsPanel from '@/components/results/SuggestionsPanel';
 import FixMyVideo from '@/components/results/FixMyVideo';
 import CompetitorPanel from '@/components/results/CompetitorPanel';
 import VisualTimeline from '@/components/results/VisualTimeline';
+import DevPanel from '@/components/results/DevPanel';
+
+const IS_DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
 type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'timeline' | 'competitor';
 
@@ -241,6 +244,11 @@ export default function ResultsPage() {
             </motion.button>
           </Link>
         </div>
+
+        {/* Developer audit panel — only visible when NEXT_PUBLIC_DEV_MODE=true */}
+        {IS_DEV_MODE && result._debug && (
+          <DevPanel debug={result._debug} />
+        )}
       </div>
     </div>
   );

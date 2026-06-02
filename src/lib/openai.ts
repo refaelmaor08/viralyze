@@ -622,6 +622,14 @@ export async function analyzeVideo(
     executiveSummary: deframe(String(raw.executiveSummary || ''), timestamps, dur, isHe),
     overallVerdict: deframe(String(raw.overallVerdict || ''), timestamps, dur, isHe),
     createdAt: new Date().toISOString(),
+    _debug: {
+      frameCount: frameData.frames.length,
+      frameTimestamps: frameData.frameTimestamps,
+      transcriptLength: transcriptData?.transcript?.length ?? 0,
+      transcriptPreview: transcriptData?.transcript?.slice(0, 500) ?? '',
+      modulesRan: ['analyzeVideo'],
+      rawGptResponse: raw as Record<string, unknown>,
+    },
   };
 }
 

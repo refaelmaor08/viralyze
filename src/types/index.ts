@@ -79,6 +79,15 @@ export interface FixMyVideoSuggestion {
   type: 'cut' | 'zoom' | 'subtitle' | 'speedup' | 'music' | 'emotion' | 'transition';
 }
 
+export interface DevDebugData {
+  frameCount: number;
+  frameTimestamps: number[];
+  transcriptLength: number;
+  transcriptPreview: string;
+  modulesRan: string[];
+  rawGptResponse: Record<string, unknown>;
+}
+
 export interface AnalysisResult {
   id: string;
   scores: AnalysisScores;
@@ -89,6 +98,7 @@ export interface AnalysisResult {
   overallVerdict: string;
   createdAt: string;
   timeline?: TimelineEntry[];
+  _debug?: DevDebugData;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────

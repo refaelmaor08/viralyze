@@ -416,6 +416,13 @@ function AnalyzeContent() {
 
       const result = data as AnalysisResult;
 
+      if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
+        sessionStorage.setItem('viralyze_dev', JSON.stringify({
+          frames: finalFrameData.frames,
+          timestamps: finalFrameData.frameTimestamps,
+        }));
+      }
+
       if (fingerprint) setCachedResult(fingerprint, result);
 
       sessionStorage.setItem('viralyze_result', JSON.stringify(result));
