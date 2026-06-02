@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw, LayoutDashboard, Clock } from 'lucide-react';
+import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw, LayoutDashboard, Clock, TrendingUp } from 'lucide-react';
 import { AnalysisResult, CompetitorAnalysis } from '@/types';
 import { getStoredResult } from '@/lib/history';
 import ScoreDashboard from '@/components/results/ScoreDashboard';
@@ -13,14 +13,16 @@ import SuggestionsPanel from '@/components/results/SuggestionsPanel';
 import FixMyVideo from '@/components/results/FixMyVideo';
 import CompetitorPanel from '@/components/results/CompetitorPanel';
 import VisualTimeline from '@/components/results/VisualTimeline';
+import ViralPotentialResult from '@/components/results/ViralPotentialResult';
 import DevPanel from '@/components/results/DevPanel';
 
 const IS_DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
-type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'timeline' | 'competitor';
+type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'timeline' | 'competitor' | 'viral';
 
-const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
+const tabs: { id: Tab; label: string; icon: React.ElementType; requiresField?: string }[] = [
   { id: 'scores',     label: 'ציונים',         icon: BarChart3 },
+  { id: 'viral',      label: 'ויראליות',       icon: TrendingUp, requiresField: 'viralAnalysis' },
   { id: 'feedback',   label: 'מה לשפר',        icon: MessageSquare },
   { id: 'suggestions',label: 'המלצות',         icon: Zap },
   { id: 'fix',        label: 'תקן',            icon: Scissors },
@@ -187,22 +189,24 @@ export default function ResultsPage() {
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-1.5 mb-8 justify-end">
-          {tabs.map((tab) => (
-            <motion.button
-              key={tab.id}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black'
-                  : 'glass text-white/50 hover:text-white'
-              }`}
-            >
-              <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              {tab.label}
-            </motion.button>
-          ))}
+          {tabs
+            .filter((tab) => !tab.requiresField || result[tab.requiresField as keyof typeof result])
+            .map((tab) => (
+              <motion.button
+                key={tab.id}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-gradient-to-r from-[#D4A843] to-[#F0C060] text-black'
+                    : 'glass text-white/50 hover:text-white'
+                }`}
+              >
+                <tab.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                {tab.label}
+              </motion.button>
+            ))}
         </div>
 
         {/* Tab content */}
@@ -215,6 +219,7 @@ export default function ResultsPage() {
             transition={{ duration: 0.25 }}
           >
             {activeTab === 'scores' && <ScoreDashboard result={result} />}
+            {activeTab === 'viral' && result.viralAnalysis && <ViralPotentialResult analysis={result.viralAnalysis} />}
             {activeTab === 'feedback' && <FeedbackPanel feedback={result.feedback} />}
             {activeTab === 'suggestions' && <SuggestionsPanel suggestions={result.suggestions} />}
             {activeTab === 'fix' && <FixMyVideo suggestions={result.fixMyVideo} />}

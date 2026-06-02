@@ -99,6 +99,7 @@ export interface AnalysisResult {
   createdAt: string;
   timeline?: TimelineEntry[];
   _debug?: DevDebugData;
+  viralAnalysis?: ViralPotentialAnalysis;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────
@@ -324,6 +325,30 @@ export interface CreatorAssistantResponse {
   ideas: CreatorIdea[];
   viralAngles: string[];
   thumbnailConcepts: string[];
+}
+
+// ─── Viral Potential Analysis ─────────────────────────────────────────────────
+
+export interface ViralDimension {
+  score: number;
+  insight: string;
+}
+
+export interface ViralPotentialAnalysis {
+  viralScore: number;
+  dimensions: {
+    shareability: ViralDimension;
+    emotionalImpact: ViralDimension;
+    relatability: ViralDimension;
+    commentPotential: ViralDimension;
+    rewatchPotential: ViralDimension;
+    memorability: ViralDimension;
+  };
+  boosts: string[];
+  drags: string[];
+  mostViralElement: string;
+  biggestMissedOpportunity: string;
+  topImprovement: string;
 }
 
 // ─── Transcript & Audio Analysis (Phase 2) ────────────────────────────────────

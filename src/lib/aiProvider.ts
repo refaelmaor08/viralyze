@@ -23,6 +23,7 @@ import type {
   Recommendations,
   LanguageSafetyAnalysis,
   TranscriptData,
+  ViralPotentialAnalysis,
 } from '@/types';
 
 // Default to 'real' when OPENAI_API_KEY is present; fall back to 'demo' only when no key configured
@@ -1610,4 +1611,100 @@ export async function analyzeLanguageSafety(
   }
   const { analyzeLanguageSafety: openaiLang } = await import('./openai');
   return openaiLang(transcript, context, understanding);
+}
+
+// ─── Viral Potential Analyst — demo data ──────────────────────────────────────
+
+const DEMO_VIRAL_HE: ViralPotentialAnalysis[] = [
+  {
+    viralScore: 68,
+    dimensions: {
+      shareability:     { score: 72, insight: 'יש פה רגע שאנשים ישתפו עם חבר אחד ספציפי — לא עם כל הקהל שלהם. שיתוף "שלח לחבר" חזק אבל לא שיתוף פומבי.' },
+      emotionalImpact:  { score: 74, insight: 'נוסטלגיה קלה + חיוך — מעלה מצב רוח בלי להשאיר חותם עמוק. מספיק כדי לקבל לייק, לא מספיק כדי לזכור מחר.' },
+      relatability:     { score: 81, insight: 'הסיטואציה מוכרת לרוב רחב של אנשים. אין מחסום כניסה — כל אחד שחווה את זה לפחות פעם אחת יבין מיד.' },
+      commentPotential: { score: 58, insight: 'אין שאלה פתוחה ואין עמדה שמאתגרת. יקבל תגובות "זה אני" ואמוג\'י אבל לא ויכוח או שרשרת תגובות.' },
+      rewatchPotential: { score: 45, insight: 'אין פרט נסתר ואין ציפייה שמתקיימת בסוף. אחרי צפייה אחת אין סיבה לחזור.' },
+      memorability:     { score: 61, insight: 'אין משפט אחד שנשאר. אין תמונה שנדבקת. ייזכרו שראו משהו דומה, לא את הסרטון הספציפי הזה.' },
+    },
+    boosts: [
+      'הזדהות מיידית — הצופה מכיר את הסיטואציה תוך 2 שניות, הגדר הפסיכולוגי לשיתוף נמוך',
+      'טון רגשי חיובי — תוכן שמשפר מצב רוח מקבל יותר לייקים כי אנשים רוצים להיראות "בטוב"',
+      'אורך קצר — לא מבקש הרבה מהצופה, כך שסבירות ההשלמה גבוהה',
+    ],
+    drags: [
+      'אין מתח — אין שאלה שמחכה לתשובה, ולכן אין סיבה פסיכולוגית לראות עד הסוף',
+      'אין זווית ייחודית — תוכן דומה כבר קיים, הצופה לא מרגיש שראה משהו חדש',
+      'אין קריאה לפעולה רגשית — "תייג מישהו" לא נאמר בפירוש, גם לא רמוז',
+    ],
+    mostViralElement: 'ההזדהות המיידית היא הנכס הגדול ביותר של הסרטון. הצופה מרגיש "זה בדיוק אני" תוך שתי שניות — זה המנגנון שמניע שיתופים בין חברים. אנשים שולחים תוכן כשהוא "מנסח" חוויה שלא יכלו לנסח לבד.',
+    biggestMissedOpportunity: 'הסרטון מגיע לסף הרגש אבל לא עובר אותו. ברגע שהצופה מתחיל להרגיש — הסרטון נגמר. אם הרגע הרגשי המרכזי היה מתרחש 3 שניות לפני הסוף, ולא בסוף, הצופה היה מסיים עם תחושה שלמה יותר וסבירות גבוהה יותר לשתף.',
+    topImprovement: 'הוסף שאלה ישירה בסוף — "אתם מרגישים אותו דבר?" — ותייג קהל ספציפי. תוכן שמבקש תיוג מפורשות מקבל פי 2.3 יותר תגובות.',
+  },
+  {
+    viralScore: 82,
+    dimensions: {
+      shareability:     { score: 88, insight: 'יש פה הפתעה שאנשים ירצו לחשוף לאחרים — "אתה חייב לראות את זה". זהו הטריגר החזק ביותר לשיתוף פומבי.' },
+      emotionalImpact:  { score: 85, insight: 'הפתעה + חיוך = שילוב עוצמתי. המוח משחרר דופמין כשציפייה מופרכת לטובה — בדיוק מה שקורה פה.' },
+      relatability:     { score: 76, insight: 'לא כולם ייקשרו, אבל מי שייקשר — ייקשר חזק. נישה ברורה עם קהל עמוק עדיפה על נישה רחבה רדודה.' },
+      commentPotential: { score: 79, insight: 'הסרטון שואל שאלה שאין לה תשובה אחת — זה מזמין דעות. כל תגובה מסית תגובות נוספות.' },
+      rewatchPotential: { score: 71, insight: 'יש פרט שמוחמץ בצפייה ראשונה. מי שישים לב יחזור לוודא. יצירת "מצא את ההבדל" שקט יוצרת לופ צפייה.' },
+      memorability:     { score: 83, insight: 'הרגע המרכזי הוא תמונה שנשארת — סצנה שאנשים יזכרו גם שבוע אחרי. לתוכן שנדבק יש בדרך כלל תמונה אחת מרכזית.' },
+    },
+    boosts: [
+      'אלמנט הפתעה — המוח נוירולוגית "מסמן" רגעי הפתעה לזכרון, מה שמגדיל זכירה ושיתוף',
+      'פרט נסתר שמחכה לגילוי — יוצר מוטיבציה לצפות שוב ולשלוח "ראית את זה?"',
+      'סיום שמשאיר שאלה פתוחה — הדחף לסגור מעגל קוגניטיבי מניע תגובות ותייוגים',
+    ],
+    drags: [
+      'הפתיחה לא מבשרת שמשהו מיוחד מגיע — חלק מהצופים ייצאו לפני ההפתעה',
+      'הכותרת/קאפשן לא תואמת את עוצמת הרגע — מורידה ציפיות ולכן גם פחות קליקים',
+    ],
+    mostViralElement: 'ההפתעה האמיתית באמצע הסרטון. כשציפייה של הצופה מופרכת לטובה — המוח מסמן את הרגע כ"כדאי לשתף". זו הסיבה שרגעי "לא ציפיתי לזה" הם הסרטונים הכי משותפים בכל פלטפורמה.',
+    biggestMissedOpportunity: 'הפתיחה לא מעלה הבטחה ספציפית. אם הצופה היה יודע מהשנייה הראשונה שמשהו בלתי צפוי מחכה — אחוז ה-completion היה גבוה יותר ב-30-40%, מה שמגדיל חשיפה אורגנית אוטומטית.',
+    topImprovement: 'שנה את 3 השניות הראשונות כך שיכללו הבטחה: "מה שקרה אחר כך לא ציפיתי בחיים" — הסקרנות היא הטריגר הכי חזק לצפייה מלאה.',
+  },
+];
+
+const DEMO_VIRAL_EN: ViralPotentialAnalysis[] = [
+  {
+    viralScore: 65,
+    dimensions: {
+      shareability:     { score: 68, insight: 'There is a "send to one person" moment here — strong for DM sharing but not broad public resharing.' },
+      emotionalImpact:  { score: 71, insight: 'Mild nostalgia and warmth — enough for a like, not enough to leave a lasting emotional mark.' },
+      relatability:     { score: 78, insight: 'The situation is broadly familiar. Low barrier to connect — most people have experienced something similar.' },
+      commentPotential: { score: 52, insight: 'No open question, no challenging take. Will get "that\'s me" comments but not a debate thread.' },
+      rewatchPotential: { score: 42, insight: 'Nothing to discover on a second watch. No hidden detail, no payoff that rewards patience.' },
+      memorability:     { score: 58, insight: 'No single sticky phrase or image. Viewers will remember watching something like this, not this video specifically.' },
+    },
+    boosts: [
+      'Immediate recognition — viewer identifies the situation within 2 seconds, lowering the psychological barrier to share',
+      'Positive emotional tone — mood-boosting content gets more likes because people want to be seen as "positive"',
+    ],
+    drags: [
+      'No tension — no open question means no psychological reason to watch to the end',
+      'No unique angle — similar content exists; viewer does not feel they saw something new',
+      'No explicit or implied call to tag someone — sharing rate stays low',
+    ],
+    mostViralElement: 'Immediate relatability is the biggest asset. The viewer feels "that\'s exactly me" within two seconds — this is the mechanism that drives friend-to-friend shares. People share content that articulates an experience they could not articulate themselves.',
+    biggestMissedOpportunity: 'The video reaches the emotional threshold but does not cross it. If the central emotional moment happened three seconds before the end rather than at the end, viewers would finish with a more complete feeling and higher share intent.',
+    topImprovement: 'Add a direct question at the end — "Does this happen to you too?" — and tag a specific audience. Content that explicitly requests tagging receives 2.3x more comments on average.',
+  },
+];
+
+async function getDemoViralPotential(language: string): Promise<ViralPotentialAnalysis> {
+  await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+  const pool = language === 'english' ? DEMO_VIRAL_EN : DEMO_VIRAL_HE;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+export async function analyzeViralPotential(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  transcriptData?: TranscriptData | null
+): Promise<ViralPotentialAnalysis> {
+  if (AI_MODE === 'demo') {
+    return getDemoViralPotential(context.language);
+  }
+  const { analyzeViralPotential: openaiViral } = await import('./openai');
+  return openaiViral(frameData, context, transcriptData);
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeVideo } from '@/lib/aiProvider';
+import { analyzeVideo, analyzeViralPotential } from '@/lib/aiProvider';
 import { SimpleVideoContext, VideoFrameData, TranscriptData } from '@/types';
 
 export const maxDuration = 120;
@@ -61,7 +61,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'יש לבחור לפחות פלטפורמה אחת' }, { status: 400 });
     }
 
-    const result = await analyzeVideo(frameData, context, transcriptData ?? null);
+    const [result, viralAnalysis] = await Promise.all([
+      analyzeVideo(frameData, context, transcriptData ?? null),
+      analyzeViralPotential(frameData, context, transcriptData ?? null),
+    ]);
+    result.viralAnalysis = viralAnalysis;
     if (process.env.DEV_MODE !== 'true') {
       delete result._debug;
     }

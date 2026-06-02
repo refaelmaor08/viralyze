@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData, ViralPotentialAnalysis, ViralDimension } from '@/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -1612,4 +1612,138 @@ Make ideas SPECIFIC to their business. No generic advice.`,
   });
 
   return JSON.parse(completion.choices[0].message.content || '{}');
+}
+
+// ─── Viral Potential Analyst ──────────────────────────────────────────────────
+
+export async function analyzeViralPotential(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  transcriptData?: TranscriptData | null,
+): Promise<ViralPotentialAnalysis> {
+  const isHe = context.language === 'hebrew';
+
+  const viralSystemPrompt = isHe
+    ? `אתה פסיכולוג תוכן ויראלי — מומחה להתנהגות שיתוף ותוכן ברשתות חברתיות.
+
+תפקידך: לנתח את הפוטנציאל הוויראלי של התוכן עצמו בלבד.
+לא איכות עריכה. לא ערכי הפקה. לא קאטים. רק: מה הסיבה הפסיכולוגית שאנשים ישתפו, יגיבו, יצפו שוב, יזכרו.
+
+6 ממדים שאתה מודד:
+1. שיתופיות — האם יש סיבה חזקה מספיק לשלוח לחבר? מה הטריגר הפסיכולוגי?
+2. השפעה רגשית — האם התוכן מעורר רגש? (הפתעה, השראה, סקרנות, הומור, הלם, נוסטלגיה, אמפתיה)
+3. הזדהות — האם קהל רחב יכול לראות את עצמו בתוכן הזה?
+4. פוטנציאל תגובות — האם יש משהו שמזמין ויכוח, הסכמה, או סיפורים אישיים?
+5. צפייה חוזרת — האם יש סיבה לצפות שוב? (פרט שהוחמצ, אפקט מצחיק, טכניקה ללמוד)
+6. בלתי נשכח — האם התוכן "נדבק"? האם ימשיכו לחשוב עליו אחרי שגוללו?
+
+כללי ניתוח — חובה:
+- אל תציין מספרי פריימים או חותמות זמן.
+- אל תנתח איכות עריכה, צילום, או הפקה.
+- הסבר את המנגנון הפסיכולוגי מאחורי כל תצפית.
+- היה ספציפי — "זה קשור" אינו ניתוח. "הורים לילדים יתייגו זה את זה כי זה מנסח בדיוק את הכאוס של 18:00" — זה ניתוח.
+- הסבר מדוע כל גורם עוזר או פוגע בוויראליות.
+- כתוב הכל בעברית.
+
+החזר JSON תקף בלבד:`
+    : `You are a viral content psychologist — an expert in sharing behavior and social media content.
+
+Your role: analyze the viral potential of the CONTENT ITSELF only.
+Not editing quality. Not production value. Not cuts. Only: the psychological reason people would share, comment, rewatch, remember.
+
+6 dimensions you measure:
+1. SHAREABILITY — Is there a strong enough reason to send this to someone? What is the psychological trigger?
+2. EMOTIONAL IMPACT — Does the content trigger a real emotion? (surprise, awe, curiosity, humor, shock, nostalgia, empathy, inspiration)
+3. RELATABILITY — Can a large, diverse audience see themselves in this?
+4. COMMENT POTENTIAL — Is there something that invites debate, agreement, or personal stories?
+5. REWATCH POTENTIAL — Is there a reason to watch again? (missed detail, punchline, technique to copy)
+6. MEMORABILITY — Does the content "stick"? Will they think about it after scrolling?
+
+Rules — mandatory:
+- Never mention frame numbers or timestamps.
+- Never analyze editing technique, camera work, or production.
+- Explain the psychological mechanism behind every observation.
+- Be specific — "this is relatable" is not analysis. "Working parents will tag each other because it names the exact 6pm chaos they face daily" is analysis.
+- Explain WHY each factor helps or hurts virality.
+
+Return valid JSON only:`;
+
+  const contextLine = [
+    isHe ? `פלטפורמה: ${context.platforms.join(', ')}` : `Platform: ${context.platforms.join(', ')}`,
+    context.niche ? (isHe ? `נישה: ${context.niche}` : `Niche: ${context.niche}`) : null,
+    context.contentType ? (isHe ? `סוג תוכן: ${context.contentType}` : `Content type: ${context.contentType}`) : null,
+  ].filter(Boolean).join(' | ');
+
+  const transcriptHint = transcriptData?.hasSpeech && transcriptData.transcript
+    ? (isHe
+        ? `\n\nתמלול (${transcriptData.speakingSpeedWpm} מילים/דקה): "${transcriptData.transcript.slice(0, 600)}${transcriptData.transcript.length > 600 ? '…' : ''}"`
+        : `\n\nTranscript (${transcriptData.speakingSpeedWpm} wpm): "${transcriptData.transcript.slice(0, 600)}${transcriptData.transcript.length > 600 ? '…' : ''}"`)
+    : (isHe ? '\n\nאין דיבור — נתח לפי ויזואל בלבד.' : '\n\nNo speech detected — analyze visuals only.');
+
+  const schema = `{
+  "viralScore": <0-100 overall viral potential>,
+  "dimensions": {
+    "shareability":     { "score": <0-100>, "insight": "<specific psychological reason>" },
+    "emotionalImpact":  { "score": <0-100>, "insight": "<which emotion, how strongly, why>" },
+    "relatability":     { "score": <0-100>, "insight": "<who relates, why, how many>" },
+    "commentPotential": { "score": <0-100>, "insight": "<what triggers comments or debate>" },
+    "rewatchPotential": { "score": <0-100>, "insight": "<reason to watch again>" },
+    "memorability":     { "score": <0-100>, "insight": "<what sticks, why it stays with the viewer>" }
+  },
+  "boosts": ["<specific virality booster + psychological why>", ...],
+  "drags":  ["<specific virality drag + psychological why>", ...],
+  "mostViralElement": "<detailed explanation of the strongest viral element in this content>",
+  "biggestMissedOpportunity": "<detailed explanation of the biggest viral opportunity not taken>",
+  "topImprovement": "<one specific, actionable recommendation that would most increase viral potential>"
+}`;
+
+  const userText = isHe
+    ? `נתח את הפוטנציאל הוויראלי של הסרטון הזה.\n\n${contextLine}${transcriptHint}\n\n${schema}`
+    : `Analyze the viral potential of this video.\n\n${contextLine}${transcriptHint}\n\n${schema}`;
+
+  const content: ChatCompletionContentPart[] = [
+    { type: 'text', text: userText },
+    ...frameData.frames.map(
+      (frame): ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: { url: frame, detail: 'auto' },
+      })
+    ),
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: viralSystemPrompt },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0,
+    max_tokens: 2000,
+  });
+
+  const raw = JSON.parse(completion.choices[0].message.content || '{}');
+  const clamp = (v: unknown) => Math.max(1, Math.min(100, Math.round(Number(v) || 50)));
+
+  const dim = (key: string): ViralDimension => ({
+    score: clamp(raw.dimensions?.[key]?.score),
+    insight: String(raw.dimensions?.[key]?.insight || ''),
+  });
+
+  return {
+    viralScore: clamp(raw.viralScore),
+    dimensions: {
+      shareability:     dim('shareability'),
+      emotionalImpact:  dim('emotionalImpact'),
+      relatability:     dim('relatability'),
+      commentPotential: dim('commentPotential'),
+      rewatchPotential: dim('rewatchPotential'),
+      memorability:     dim('memorability'),
+    },
+    boosts: Array.isArray(raw.boosts) ? raw.boosts.map(String) : [],
+    drags:  Array.isArray(raw.drags)  ? raw.drags.map(String)  : [],
+    mostViralElement:         String(raw.mostViralElement         || ''),
+    biggestMissedOpportunity: String(raw.biggestMissedOpportunity || ''),
+    topImprovement:           String(raw.topImprovement           || ''),
+  };
 }
