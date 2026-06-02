@@ -100,6 +100,7 @@ export interface AnalysisResult {
   timeline?: TimelineEntry[];
   _debug?: DevDebugData;
   viralAnalysis?: ViralPotentialAnalysis;
+  ocr?: OcrData;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────
@@ -325,6 +326,18 @@ export interface CreatorAssistantResponse {
   ideas: CreatorIdea[];
   viralAngles: string[];
   thumbnailConcepts: string[];
+}
+
+// ─── OCR / On-Screen Text ─────────────────────────────────────────────────────
+
+export interface OcrFrame {
+  timestamp: number;
+  texts: string[];
+}
+
+export interface OcrData {
+  frames: OcrFrame[];
+  allText: string[];
 }
 
 // ─── Viral Potential Analysis ─────────────────────────────────────────────────

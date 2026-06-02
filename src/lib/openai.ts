@@ -147,25 +147,42 @@ function formatSec(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-// Map a 1-based frame number to a human-readable section label
-function frameNumToHuman(n: number, timestamps: number[], dur: number, isHe: boolean): string {
+// Map a 1-based frame number to a precise timestamp label.
+// Returns "~Xs" (English) or "בשנייה X" (Hebrew) so output reads as seconds, not vague positions.
+function frameNumToTimestamp(n: number, timestamps: number[], isHe: boolean): string {
   const ts = timestamps[n - 1];
   if (ts === undefined) return isHe ? 'בסרטון' : 'in the video';
-  const frac = dur > 0 ? ts / dur : 0;
-  if (ts <= 1.0) return isHe ? 'בשנייה הראשונה' : 'in the first second';
-  if (ts <= 3.0) return isHe ? 'בתחילת הסרטון' : 'at the start';
-  if (frac <= 0.25) return isHe ? 'בתחילת הסרטון' : 'early in the video';
-  if (frac <= 0.5) return isHe ? 'באמצע הסרטון' : 'mid-video';
-  if (frac <= 0.75) return isHe ? 'לקראת הסוף' : 'later in the video';
-  return isHe ? 'בסוף הסרטון' : 'near the end';
+  const sec = Math.round(ts);
+  return isHe ? `בשנייה ${sec}` : `~${sec}s`;
 }
 
-// Replace all "Frame N" / "Frames N-M" occurrences in text with human section labels
-function deframe(text: string, timestamps: number[], dur: number, isHe: boolean): string {
+// Replace all "Frame N" / "Frames N-M" occurrences in text with precise timestamp labels.
+// Captures both endpoints of a range so "Frame 3-5" → "~2–7s".
+function deframe(text: string, timestamps: number[], _dur: number, isHe: boolean): string {
   if (!text) return text;
-  return text.replace(/\bframes?\s+(\d+)(?:\s*[-–]\s*\d+)?\s*:?/gi, (match, n1) => {
-    const desc = frameNumToHuman(parseInt(n1, 10), timestamps, dur, isHe);
-    return desc + (match.trimEnd().endsWith(':') ? ':' : '');
+  return text.replace(/\bframes?\s+(\d+)(?:\s*[-–]\s*(\d+))?\s*:?/gi, (match, n1, n2) => {
+    const hasColon = match.trimEnd().endsWith(':');
+    const suffix = hasColon ? ':' : '';
+
+    const idx1 = parseInt(n1, 10) - 1;
+    const ts1 = timestamps[idx1];
+    if (ts1 === undefined) return (isHe ? 'בסרטון' : 'in the video') + suffix;
+
+    const sec1 = Math.round(ts1);
+
+    if (n2 !== undefined) {
+      const idx2 = parseInt(n2, 10) - 1;
+      const ts2 = timestamps[idx2];
+      if (ts2 !== undefined) {
+        const sec2 = Math.round(ts2);
+        if (sec1 !== sec2) {
+          const desc = isHe ? `בשניות ${sec1}–${sec2}` : `~${sec1}–${sec2}s`;
+          return desc + suffix;
+        }
+      }
+    }
+
+    return frameNumToTimestamp(parseInt(n1, 10), timestamps, isHe) + suffix;
   });
 }
 
@@ -313,7 +330,8 @@ Do NOT classify or label this video as an ad, UGC, organic content, showcase, et
 Analyze purely what you SEE — lighting, motion, text, energy, composition. Nothing else.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 3 — FRAME EVIDENCE ONLY
-Every strength and weakness MUST start with the frame it is based on (e.g., "Frame 1:" or "Frame 3:").
+Every strength and weakness MUST cite the frame it is based on (e.g., "Frame 1:" or "Frame 3:").
+Frame numbers are internal citation anchors — they will be automatically converted to timestamps in the final output.
 If you cannot observe something directly in the frames, write "${isHe ? 'אין מספיק עדויות מהפריימים לאמירה זו.' : 'Not enough evidence from the frames.'}"
 Do NOT invent observations. Do NOT assume what happens between frames.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -324,12 +342,20 @@ RULE 4 — STRICT HOOK SCORING
 • 40–59: Static person talking to camera, no text, no movement visible
 • 1–39: Dark, blurry, empty, or unclear — viewer scrolls instantly
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 5 — VISUAL CONFIDENCE THRESHOLD
+Visual claims about lighting, blur, framing, or composition are ONLY allowed when the problem is unambiguous.
+▸ Subject visible but lighting "seems okay" → do NOT claim bad lighting. Write "${isHe ? 'לא זוהתה בעיה משמעותית' : 'no significant issue detected'}"
+▸ Frame appears small/compressed but subject is clear → do NOT claim blur or sharpness issues
+▸ Uncertain about framing or composition → write "${isHe ? 'לא זוהתה בעיה משמעותית' : 'no significant issue detected'}"
+▸ A score below 40 for any visual dimension MUST cite a specific, observable problem from a specific frame
+▸ Never invent problems to justify a low score
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ANALYZE THESE 7 AREAS based on what you see in the frames:
 1. Hook strength — is Frame 1 scroll-stopping? Movement, text, emotion, subject clarity?
 2. Pacing — variation between frames? Dead spots where nothing changes?
 3. Retention — would a viewer stay? Why or why not?
-4. Visual quality — lighting, stability, sharpness, composition
+4. Visual quality — lighting, stability, sharpness, composition. Only flag problems that are clearly visible. If uncertain: "${isHe ? 'לא זוהתה בעיה משמעותית' : 'no significant issue detected'}"
 5. Audio/captions — are subtitles or text overlays visible in the frames? Readable?
 6. Viral potential — is there a shareable moment? Is it scroll-stopping?
 7. Specific problems — exact issues visible in the frames that hurt performance
@@ -392,13 +418,22 @@ Return VALID JSON in this exact structure:
     }
   ],
   "executiveSummary": "<3-4 sentence honest summary based solely on what you saw in the frames>",
-  "overallVerdict": "<one honest sentence about this specific video — no invented timestamps>"
+  "overallVerdict": "<one honest sentence about this specific video — no invented timestamps>",
+  "ocr": [
+    { "frame": <1-based frame number>, "texts": ["<every legible text string visible on screen in this frame>"] }
+  ]
 }
 
 Timeline rules:
 - Provide 6–10 entries spread across 0–${dur}s
 - EVERY seconds value must be ≤ ${dur} — this is enforced server-side and any value > ${dur} will be dropped
 - Use frame positions as anchor points, not invented timestamps
+
+OCR rules:
+- Include ONLY frames where on-screen text is legible (subtitles, captions, overlays, logos, graphics)
+- List every distinct text string in the "texts" array for that frame
+- Omit frames that contain no visible text
+- Do NOT include placeholder text like "<no text>" — simply omit the frame
 
 Be brutally honest. Reference specific frames. Never mention a time beyond ${dur}s.`;
 }
@@ -558,7 +593,7 @@ export async function analyzeVideo(
     ],
     response_format: { type: 'json_object' },
     temperature: 0,
-    max_tokens: 4000,
+    max_tokens: 4500,
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
@@ -612,6 +647,17 @@ export async function analyzeVideo(
     immediateChanges: deframeArr(filterStrings(fb.immediateChanges, durRounded), timestamps, dur, isHe),
   };
 
+  // Extract on-screen text (OCR) reported by GPT for each frame
+  const ocrRaw: { frame: number; texts: unknown[] }[] = Array.isArray(raw.ocr) ? raw.ocr : [];
+  const ocrFrames = ocrRaw
+    .filter((f) => typeof f.frame === 'number' && Array.isArray(f.texts))
+    .map((f) => ({
+      timestamp: timestamps[f.frame - 1] ?? 0,
+      texts: f.texts.map(String).filter(Boolean),
+    }))
+    .filter((f) => f.texts.length > 0);
+  const allText = [...new Set(ocrFrames.flatMap((f) => f.texts))];
+
   return {
     id: crypto.randomUUID(),
     scores,
@@ -622,6 +668,7 @@ export async function analyzeVideo(
     executiveSummary: deframe(String(raw.executiveSummary || ''), timestamps, dur, isHe),
     overallVerdict: deframe(String(raw.overallVerdict || ''), timestamps, dur, isHe),
     createdAt: new Date().toISOString(),
+    ocr: { frames: ocrFrames, allText },
     _debug: {
       frameCount: frameData.frames.length,
       frameTimestamps: frameData.frameTimestamps,
