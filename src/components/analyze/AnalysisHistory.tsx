@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import {
-  Clock, TrendingUp, Zap, X, ChevronLeft, Search,
+  Clock, Zap, X, ChevronLeft, Search,
   Check, Pencil, MoreHorizontal, Trash2,
 } from 'lucide-react';
 import { getHistory, removeFromHistory, renameInHistory, type HistoryEntry } from '@/lib/history';
@@ -323,35 +323,18 @@ export default function AnalysisHistory() {
                   <p className="text-xs text-white/30 mt-0.5">{relativeDate(entry.date)}</p>
                 </div>
 
-                {/* Scores */}
+                {/* Score */}
                 <div
-                  className="flex items-center gap-3 flex-shrink-0"
+                  className="text-center flex-shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="text-center">
-                    <div
-                      className="text-base font-black"
-                      style={{ color: scoreColor(entry.viralScore) }}
-                    >
-                      {entry.viralScore}
-                    </div>
-                    <div className="flex items-center gap-0.5 mt-0.5">
-                      <TrendingUp className="w-2.5 h-2.5 text-white/25" />
-                      <span className="text-[9px] text-white/25">חשיפה</span>
-                    </div>
+                  <div
+                    className="text-base font-black"
+                    style={{ color: scoreColor(entry.viralScore) }}
+                  >
+                    {entry.viralScore}
                   </div>
-                  <div className="text-center">
-                    <div
-                      className="text-base font-black"
-                      style={{ color: scoreColor(entry.hookScore) }}
-                    >
-                      {entry.hookScore}
-                    </div>
-                    <div className="flex items-center gap-0.5 mt-0.5">
-                      <Zap className="w-2.5 h-2.5 text-white/25" />
-                      <span className="text-[9px] text-white/25">פתיחה</span>
-                    </div>
-                  </div>
+                  <div className="text-[9px] text-white/25 mt-0.5">פוטנציאל ויראלי</div>
                 </div>
 
                 {/* Three-dot menu — always visible, works on mobile touch */}
