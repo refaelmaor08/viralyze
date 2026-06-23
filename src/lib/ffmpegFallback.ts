@@ -69,6 +69,10 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+// 0.5s seek offset so WASM frames start at 0.5s — aligns with the browser
+// extraction path which also starts at 0.5s (first hook-zone target).
+const SEEK_OFFSET = 0.5;
+
 interface AttemptOpts { fps: number; scale: string; maxFrames: number; quality: number; }
 
 async function attemptExtraction(
@@ -81,11 +85,16 @@ async function attemptExtraction(
   const log = (msg: string) => { console.log(`[viralyze:wasm] ${msg}`); currentOnLog?.(msg); };
   const { fetchFile } = await import('@ffmpeg/util');
 
-  log(`writing ${(file.size / 1024 / 1024).toFixed(1)}MB → fps=${opts.fps} ${opts.scale} q=${opts.quality} max=${opts.maxFrames}`);
+  const seekOffset = duration > SEEK_OFFSET ? SEEK_OFFSET : 0;
+  log(`writing ${(file.size / 1024 / 1024).toFixed(1)}MB → offset=${seekOffset}s fps=${opts.fps} ${opts.scale} q=${opts.quality} max=${opts.maxFrames}`);
   await ffmpeg.writeFile('input', await fetchFile(file));
 
+  // -ss placed after -i uses accurate (slow) seeking — precise to within one frame.
+  // Starting at seekOffset aligns frame 0 with the 0.5s hook-zone target used by
+  // the browser extraction path, so normalizeFramesForAI selects the same timestamps.
   const ret = await ffmpeg.exec([
     '-i', 'input',
+    '-ss', seekOffset.toFixed(2),
     '-vf', `fps=${opts.fps},${opts.scale}`,
     '-q:v', String(opts.quality),
     '-frames:v', String(opts.maxFrames),
@@ -110,8 +119,8 @@ async function attemptExtraction(
       const data = await ffmpeg.readFile(fname) as Uint8Array<ArrayBuffer>;
       if (data.length >= 100) {
         frames.push(await blobToDataUrl(new Blob([data], { type: 'image/jpeg' })));
-        // Frame idx at fps output → timestamp = idx/fps seconds
-        frameTimestamps.push(Math.min(parseFloat((idx / opts.fps).toFixed(1)), duration));
+        // Frame idx at fps output, offset by seekOffset → absolute timestamp in video
+        frameTimestamps.push(Math.min(parseFloat((seekOffset + idx / opts.fps).toFixed(1)), duration));
       }
       await ffmpeg.deleteFile(fname).catch(() => {});
     } catch {
@@ -125,10 +134,6 @@ async function attemptExtraction(
   return { frames, frameTimestamps };
 }
 
-// Target frame counts matched to the browser extraction path's normalised output.
-const PRIMARY_TARGET  = 12; // matches MAX_AI_FRAMES in frameNormalize.ts
-const FALLBACK_TARGET =  8;
-
 export async function extractFramesViaFfmpeg(
   file: File,
   duration: number,
@@ -138,18 +143,28 @@ export async function extractFramesViaFfmpeg(
   currentOnLog = onLog;
   const log = (msg: string) => { console.log(`[viralyze:wasm] ${msg}`); onLog?.(msg); };
 
-  // Compute fps to yield roughly the target number of frames from this duration.
-  // Clamp to a safe range: 0.08 fps (1 frame/12s) … 2 fps (120 frames/min).
+  // Frame budget mirrors the browser extraction path (videoFrames.ts → buildTimestamps):
+  //   ≤60s → 20 frames, ≤120s → 30 frames, >120s → 40 frames
+  // This guarantees normalizeFramesForAI (max=12) always runs, producing the same
+  // hook+body+end distribution as the browser path.
+  // Additionally, a 2fps floor for short videos gives dense hook-zone coverage so
+  // normalization can select frames within 0.5s of each 0.5/1.5/2.5s target.
   const safeDur = Math.max(duration, 1);
-  const primaryFps  = parseFloat(Math.max(0.08, Math.min(2.0, PRIMARY_TARGET  / safeDur)).toFixed(3));
-  const fallbackFps = parseFloat(Math.max(0.06, Math.min(1.5, FALLBACK_TARGET / safeDur)).toFixed(3));
+  const baseTarget = safeDur <= 60 ? 20 : safeDur <= 120 ? 30 : 40;
+  // Boost to at least 2fps for short clips so hook-zone targets are achievable
+  const primaryTarget  = Math.min(60, Math.max(baseTarget, Math.ceil(2 * safeDur)));
+  const fallbackTarget = Math.max(20, Math.ceil(primaryTarget * 0.5));
+  const primaryFps  = parseFloat(Math.max(0.08, Math.min(2.0, primaryTarget  / safeDur)).toFixed(3));
+  const fallbackFps = parseFloat(Math.max(0.06, Math.min(1.5, fallbackTarget / safeDur)).toFixed(3));
 
   // 480px matches the browser canvas width → consistent resolution for GPT.
   // quality=5 (FFmpeg JPEG 1-31 scale, lower = better) ≈ browser canvas 0.85.
   // Memory note: WASM OOM comes from the HEVC decode pipeline, not output size,
   // so upgrading from 360→480px and q=15→q=5 does not meaningfully increase peak heap.
-  const PRIMARY: AttemptOpts  = { fps: primaryFps,  scale: 'scale=480:-1', maxFrames: PRIMARY_TARGET,  quality: 5  };
-  const FALLBACK: AttemptOpts = { fps: fallbackFps, scale: 'scale=360:-1', maxFrames: FALLBACK_TARGET, quality: 10 };
+  const PRIMARY: AttemptOpts  = { fps: primaryFps,  scale: 'scale=480:-1', maxFrames: primaryTarget,  quality: 5  };
+  const FALLBACK: AttemptOpts = { fps: fallbackFps, scale: 'scale=360:-1', maxFrames: fallbackTarget, quality: 10 };
+
+  log(`targets: primary=${primaryTarget} frames @ ${primaryFps}fps, fallback=${fallbackTarget} frames @ ${fallbackFps}fps`);
 
   // ── Primary attempt ────────────────────────────────────────────────────────
   try {
@@ -163,8 +178,8 @@ export async function extractFramesViaFfmpeg(
     if (!isMemory) return { frames: [], frameTimestamps: [] };
   }
 
-  // ── Fallback: fresh instance, even lower resolution ────────────────────────
-  log('retrying with 240px / 5 frames...');
+  // ── Fallback: fresh instance, lower resolution ─────────────────────────────
+  log(`retrying with 360px / ${fallbackTarget} frames...`);
   try {
     ffmpegInstance = await createFFmpegInstance();
     return await attemptExtraction(ffmpegInstance, file, duration, FALLBACK, onProgress);
