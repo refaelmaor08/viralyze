@@ -416,6 +416,16 @@ function AnalyzeContent() {
 
       const result = data as AnalysisResult;
 
+      // ── Client-side score pipeline log (check browser console) ──────────────
+      console.log('[viralyze:client-scores]', JSON.stringify({
+        isDemo: IS_DEMO,
+        viralPotential: result.scores?.viralPotential,
+        hookStrength: result.scores?.hookStrength,
+        allScores: result.scores,
+        id: result.id,
+      }));
+      // ────────────────────────────────────────────────────────────────────────
+
       if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
         sessionStorage.setItem('viralyze_dev', JSON.stringify({
           frames: finalFrameData.frames,

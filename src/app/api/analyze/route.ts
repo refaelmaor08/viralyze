@@ -61,11 +61,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'יש לבחור לפחות פלטפורמה אחת' }, { status: 400 });
     }
 
+    // ── Pipeline debug log ──────────────────────────────────────────────────────
+    console.log('[viralyze:analyze:config]', JSON.stringify({
+      AI_MODE: process.env.AI_MODE ?? '(not set — defaults to demo in aiProvider)',
+      AI_PROVIDER: process.env.AI_PROVIDER ?? '(not set)',
+      hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+      frameCount: frameData?.frames?.length ?? 0,
+      hasSpeech: transcriptData?.hasSpeech ?? false,
+    }));
+    // ────────────────────────────────────────────────────────────────────────────
+
     const [result, viralAnalysis] = await Promise.all([
       analyzeVideo(frameData, context, transcriptData ?? null),
       analyzeViralPotential(frameData, context, transcriptData ?? null),
     ]);
     result.viralAnalysis = viralAnalysis;
+
+    // ── Final score log (visible in Vercel Function Logs) ───────────────────────
+    console.log('[viralyze:final-scores]', JSON.stringify({
+      viralPotential: result.scores.viralPotential,
+      hookStrength: result.scores.hookStrength,
+      attention: result.scores.attention,
+      pacing: result.scores.pacing,
+      allScores: result.scores,
+    }));
+    // ────────────────────────────────────────────────────────────────────────────
+
     if (process.env.DEV_MODE !== 'true') {
       delete result._debug;
     }

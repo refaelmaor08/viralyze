@@ -350,98 +350,108 @@ Visual claims about lighting, blur, framing, or composition are ONLY allowed whe
 ▸ A score below 40 for any visual dimension MUST cite a specific, observable problem from a specific frame
 ▸ Never invent problems to justify a low score
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RULE 6 — SCORE RUBRICS (all 9 dimensions below — apply exactly)
-A score of 48–55 is FORBIDDEN unless you explicitly state in the feedback why this video is precisely average at that dimension. Commit to a real assessment based on what you observe in the frames.
+RULE 6 — SCORING METHOD (anchor-point interpolation — NOT bands)
+Use the anchor points below as reference. Interpolate between them based on the SPECIFIC visual evidence you observe. Do NOT default to an anchor value — pick the number that matches what you actually see.
 
-viralPotential — probability a cold viewer shares or saves this without being prompted:
-• 75–100: Multiple scroll-stopping elements + a clear "must send to someone" psychological trigger visible in frames
-• 55–74: Some compelling qualities but missing a share trigger or has one obvious flaw
-• 35–54: Generic feed content — viewer watches and scrolls on, no reason to save or share
-• 15–34: Clear performance killers present: weak Frame 1 + no payoff + no CTA evidence in frames
-• 1–14: Actively suppresses reach — dark/unclear opener, no structure, retention near zero
+Example: if viralPotential is clearly above the "45" anchor (because there IS an emotional moment) but doesn't reach the "60" anchor (because the hook is weak), give it 51 or 53 — not 45 or 60.
 
-attention — would a viewer stay until the end?
-• 75–100: Every frame has a reason to keep watching — no visible dead zones, constant novelty
-• 55–74: Generally engaging but 1–2 visible drop-off moments between static consecutive frames
-• 35–54: Holds some viewers — loses others at predictable moments
-• 15–34: Multiple consecutive frames with no visual change = dead zones that kill retention
-• 1–14: Would lose 90%+ of viewers before the halfway point
+viralPotential anchors (cold-viewer probability of sharing/saving):
+  95 → Undeniable real-world hook + mass relatability + clear send-to-friend moment — saves and tags happen automatically
+  78 → Compelling hook + genuine emotion + practical shareable value — strong organic reach candidate
+  62 → One real strength (hook OR emotion OR value) — above average but missing the trifecta for viral spread
+  47 → Standard talking-head — watchable and correct, but nothing makes a viewer share or save it
+  32 → Weak hook + thin content — useful only to viewers already interested; invisible to algorithm
+  16 → Frame 1 fails (dark/static/unclear) + no structure + no emotional arc — actively suppresses reach
 
-curiosity — does this create an unanswered question that compels the viewer forward?
-• 75–100: Frame 1 creates immediate tension or mystery that DEMANDS resolution — viewer cannot scroll
-• 55–74: Some intrigue but the payoff is obvious or low-stakes
-• 35–54: Informational — viewer watches for content, not because they MUST know what happens
-• 15–34: No mystery, tension, or surprise visible in any frame
-• 1–14: Completely predictable from the first frame — zero curiosity gap
+attention anchors (retention to the end):
+  92 → Every frame earns its place — constant novelty, zero dead zones visible
+  74 → Engaging throughout with minor drop at one section
+  57 → Holds most viewers; 1–2 visible dead zones (consecutive unchanged frames)
+  41 → Multiple consecutive static frames — clear retention killers visible
+  22 → Would lose 80%+ before the halfway point — dead zones dominate
 
-emotionalImpact — strength of any emotional response triggered (any emotion counts):
-• 75–100: Clear emotional arc across frames — energy builds, a distinct emotional peak is visible
-• 55–74: Moments of resonance but flat or inconsistent delivery across frames
-• 35–54: Emotionally neutral — informative but doesn't move the viewer
-• 15–34: Low energy throughout — frames show monotone delivery, no facial variation or movement
-• 1–14: Alienating, uncomfortable, or emotionally incoherent
+curiosity anchors (creates a pull-forward unanswered question):
+  93 → Frame 1 opens tension or mystery that physically cannot be ignored — forces continuation
+  76 → Genuine intrigue in frame 1, payoff not obvious
+  58 → Some pull but the answer is obvious or low-stakes
+  42 → Informational — viewer watches for content, not because they MUST know
+  24 → Completely predictable from frame 1 — zero curiosity gap
 
-rewatchPotential — is there something worth seeing again?
-• 75–100: Contains a payoff, technique, or hidden detail that rewards re-watching
-• 55–74: Enjoyable but nothing specifically missed on first watch
-• 35–54: Single-use content — completely understood on first viewing
-• 15–34: Repetitive or padded — re-watching would add nothing
-• 1–14: Intentionally one-time or time-sensitive content
+emotionalImpact anchors (strength of any emotional response):
+  91 → Clear emotional arc — energy visibly builds across frames to a distinct peak
+  73 → Genuine emotion present; delivery consistent but no visible crescendo
+  55 → Moments of warmth or connection; mostly flat
+  38 → Low energy throughout — monotone delivery, no facial variation visible across frames
+  19 → Alienating or uncomfortable to watch
 
-shareability — psychological trigger to send to a friend or repost:
-• 75–100: "This is EXACTLY [person I know]'s situation" or "I need to save this for later"
-• 55–74: Worth sharing but no specific "send to [name]" trigger moment
-• 35–54: Personal value only — viewer absorbs content and moves on
-• 15–34: Too niche, too promotional, or too forgettable to share
-• 1–14: Active sharing repellent — cringe, misleading, or offensive
+rewatchPotential anchors (reason to watch again):
+  88 → Hidden detail, punchline, or technique visible only on re-watch
+  68 → Enjoyable; nothing specifically missed on first watch
+  49 → Single-use — fully understood on first viewing
+  31 → Repetitive or padded — re-watching adds nothing
+  14 → Intentionally one-time content
 
-commentPotential — how strongly this invites comments, debate, or "me too" responses:
-• 75–100: Makes a claim viewers will agree or disagree with, shows something surprising, or asks a question
-• 55–74: Some comment hooks but not provocative or relatable enough to spark responses
-• 35–54: Informational — viewers consume content without feeling compelled to respond
-• 15–34: Too polished, too obvious, or one-sided for meaningful response
-• 1–14: Comment-suppressing — viewer feels there is nothing to add
+shareability anchors (psychological send-to-someone trigger):
+  93 → "This is EXACTLY [specific person]'s situation" — viewer tags without thinking
+  76 → Relatable and useful but missing the specific "send to [name]" moment
+  58 → Worth sharing in theory; no compulsion
+  39 → Personal value only — viewer absorbs and moves on
+  18 → Too niche, promotional, or cringe to share
 
-pacing — rhythm of edits serves the content (USE measured ${frameData.editingPace} / ${frameData.cutsPerSecond.toFixed(2)} cuts/sec):
-• 75–100: Editing rhythm is intentional — builds tension then releases, no wasted cuts, each frame earns its place
-• 55–74: Mostly good rhythm but one visible dead zone or slightly off-beat section
-• 35–54: Consistent but flat — no energy peaks or valleys, same speed throughout
-• 15–34: Clearly too slow (dead zones across multiple consecutive identical frames) OR too chaotic
-• 1–14: Pacing actively destroys retention — severe dead zone OR disorienting rapid-fire cutting
+commentPotential anchors (invites debate, agreement, "me too"):
+  91 → Makes a controversial or surprising claim — debate and "me too" comments inevitable
+  73 → Comment-worthy but not divisive enough to spark many responses
+  55 → Informational — viewers consume without feeling compelled to add anything
+  37 → Too obvious or one-sided for meaningful response
+  18 → Comment-suppressing — nothing to react to
 
-visualStimulation — richness and visual appeal of what the viewer sees:
-• 75–100: Varied composition, compelling subject, good lighting — every frame is worth looking at
-• 55–74: Good production quality but repetitive framing or limited visual range across frames
-• 35–54: Acceptable — correctly exposed and framed but nothing visually memorable
-• 15–34: One clear visual problem: poor lighting OR fully static framing across ALL frames
-• 1–14: Multiple visual failures — dark + blurry + static + no visual interest throughout
+pacing anchors (editing rhythm vs. content — use measured ${frameData.cutsPerSecond.toFixed(2)} cuts/sec):
+  91 → Rhythm builds tension and releases it — every cut earns its place, no wasted frames
+  73 → Mostly good rhythm; one slightly dead or over-cut section visible
+  55 → Consistent but flat — no peaks or valleys, same speed throughout
+  37 → Too slow (dead zones across 3+ consecutive unchanged frames) OR too chaotic
+  18 → Pacing destroys retention — severe dead zone OR disorienting rapid cuts
+
+visualStimulation anchors (richness and appeal of what the viewer sees):
+  92 → Striking composition, varied angles, strong lighting — every frame is visually interesting
+  74 → Good production quality; some repetitive framing
+  56 → Acceptable — correctly exposed and framed, nothing memorable
+  38 → One clear problem: poor/harsh lighting OR static identical framing in all frames
+  19 → Multiple failures — dark + static + low contrast throughout
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ANALYZE THESE 10 DIMENSIONS based on what you see in the frames and measured signals:
-1. hookStrength — Frame 1 only (RULE 4): movement, text, emotion, subject clarity?
-2. attention — are there dead zones? Does every frame give a reason to stay?
-3. curiosity — does Frame 1 open a tension or question? Does it get resolved?
-4. emotionalImpact — is there an emotional arc visible across frames?
-5. rewatchPotential — is there anything that rewards a second viewing?
-6. shareability — is there a "must send this to [person]" moment in the frames?
-7. commentPotential — does this make a claim or show something worth debating?
-8. pacing — do the measured ${frameData.cutsPerSecond.toFixed(2)} cuts/sec serve the content? Dead zones?
-9. visualStimulation — lighting, variety, composition quality across all frames
-10. viralPotential — synthesize all the above into one overall organic-reach score
+STEP 1 — OBSERVE (do this before scoring):
+For each of the following, write one sentence describing what you actually see in the frames. This observation determines the score.
+
+A. HOOK: What is happening in Frame 1? Movement level, energy, text visible, subject clarity.
+B. DEAD ZONES: Are there consecutive frames with no visual change? How many and where?
+C. EMOTIONAL ARC: Describe the energy level at Frame 1, mid-video, and final frame.
+D. SHARE TRIGGER: Is there a specific moment visible in any frame that makes you want to send this to someone? Describe it.
+E. VISUAL RANGE: Describe the best-looking frame vs the worst-looking frame.
+
+STEP 2 — SCORE (after observing):
+Place each score using the anchor points in RULE 6. The observation in Step 1 MUST determine the score — do not default to anchor values.
 
 Return VALID JSON in this exact structure:
 {
+  "_observations": {
+    "hook": "<Frame 1 description from Step 1-A>",
+    "deadZones": "<observation from Step 1-B>",
+    "emotionalArc": "<observation from Step 1-C>",
+    "shareTrigger": "<observation from Step 1-D>",
+    "visualRange": "<observation from Step 1-E>"
+  },
   "scores": {
-    "viralPotential": <1–100 per RULE 6 — synthesize dimensions 1–9>,
-    "attention": <1–100 per RULE 6>,
-    "curiosity": <1–100 per RULE 6>,
-    "emotionalImpact": <1–100 per RULE 6>,
-    "rewatchPotential": <1–100 per RULE 6>,
-    "shareability": <1–100 per RULE 6>,
-    "commentPotential": <1–100 per RULE 6>,
-    "hookStrength": <1–100 per RULE 4>,
-    "pacing": <1–100 per RULE 6 — must align with measured ${frameData.editingPace} pace>,
-    "visualStimulation": <1–100 per RULE 6>
+    "viralPotential": <1–100 interpolated from RULE 6 anchors — synthesize all observations>,
+    "attention": <1–100 from deadZones observation + RULE 6 anchors>,
+    "curiosity": <1–100 from hook observation + RULE 6 anchors>,
+    "emotionalImpact": <1–100 from emotionalArc observation + RULE 6 anchors>,
+    "rewatchPotential": <1–100 from RULE 6 anchors>,
+    "shareability": <1–100 from shareTrigger observation + RULE 6 anchors>,
+    "commentPotential": <1–100 from RULE 6 anchors>,
+    "hookStrength": <1–100 per RULE 4 — Frame 1 only>,
+    "pacing": <1–100 from deadZones observation + measured ${frameData.editingPace} pace + RULE 6 anchors>,
+    "visualStimulation": <1–100 from visualRange observation + RULE 6 anchors>
   },
   "feedback": {
     "strengths": [
@@ -644,12 +654,16 @@ export async function analyzeVideo(
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null
 ): Promise<AnalysisResult> {
+  // Hook frames (first 3) get high detail so GPT can actually distinguish between
+  // different videos at the critical opening. Low detail (85 tokens) makes all
+  // talking-head videos look identical; high detail (1105 tokens) shows expressions,
+  // text overlays, lighting and movement that differentiate content.
   const content: ChatCompletionContentPart[] = [
     { type: 'text', text: buildPrompt(frameData, context, transcriptData) },
     ...frameData.frames.map(
-      (frame): ChatCompletionContentPart => ({
+      (frame, idx): ChatCompletionContentPart => ({
         type: 'image_url',
-        image_url: { url: frame, detail: 'auto' },
+        image_url: { url: frame, detail: idx < 3 ? 'high' : 'low' },
       })
     ),
   ];
@@ -662,10 +676,19 @@ export async function analyzeVideo(
     ],
     response_format: { type: 'json_object' },
     temperature: 0,
-    max_tokens: 4500,
+    max_tokens: 5000,
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
+
+  // ── Debug log: raw GPT scores (visible in Vercel Function Logs) ───────────────
+  console.log('[viralyze:gpt-raw]', JSON.stringify({
+    scores: raw.scores ?? 'MISSING',
+    observations: raw._observations ?? 'MISSING',
+    truncated: !raw.scores,
+  }));
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const dur = frameData.duration;
   const durRounded = Math.round(dur);
   const isHe = context.language === 'hebrew';
@@ -695,6 +718,10 @@ export async function analyzeVideo(
     pacing:           clampScore(rawS.pacing,           'pacing'),
     visualStimulation:clampScore(rawS.visualStimulation,'visualStimulation'),
   };
+
+  // ── Debug log: parsed scores ──────────────────────────────────────────────────
+  console.log('[viralyze:parsed-scores]', JSON.stringify(scores));
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Clamp timeline seconds to actual duration; reconstruct "time" string from clamped value
   const timeline = Array.isArray(raw.timeline)
