@@ -350,29 +350,98 @@ Visual claims about lighting, blur, framing, or composition are ONLY allowed whe
 ▸ A score below 40 for any visual dimension MUST cite a specific, observable problem from a specific frame
 ▸ Never invent problems to justify a low score
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 6 — SCORE RUBRICS (all 9 dimensions below — apply exactly)
+A score of 48–55 is FORBIDDEN unless you explicitly state in the feedback why this video is precisely average at that dimension. Commit to a real assessment based on what you observe in the frames.
 
-ANALYZE THESE 7 AREAS based on what you see in the frames:
-1. Hook strength — is Frame 1 scroll-stopping? Movement, text, emotion, subject clarity?
-2. Pacing — variation between frames? Dead spots where nothing changes?
-3. Retention — would a viewer stay? Why or why not?
-4. Visual quality — lighting, stability, sharpness, composition. Only flag problems that are clearly visible. If uncertain: "${isHe ? 'לא זוהתה בעיה משמעותית' : 'no significant issue detected'}"
-5. Audio/captions — are subtitles or text overlays visible in the frames? Readable?
-6. Viral potential — is there a shareable moment? Is it scroll-stopping?
-7. Specific problems — exact issues visible in the frames that hurt performance
+viralPotential — probability a cold viewer shares or saves this without being prompted:
+• 75–100: Multiple scroll-stopping elements + a clear "must send to someone" psychological trigger visible in frames
+• 55–74: Some compelling qualities but missing a share trigger or has one obvious flaw
+• 35–54: Generic feed content — viewer watches and scrolls on, no reason to save or share
+• 15–34: Clear performance killers present: weak Frame 1 + no payoff + no CTA evidence in frames
+• 1–14: Actively suppresses reach — dark/unclear opener, no structure, retention near zero
+
+attention — would a viewer stay until the end?
+• 75–100: Every frame has a reason to keep watching — no visible dead zones, constant novelty
+• 55–74: Generally engaging but 1–2 visible drop-off moments between static consecutive frames
+• 35–54: Holds some viewers — loses others at predictable moments
+• 15–34: Multiple consecutive frames with no visual change = dead zones that kill retention
+• 1–14: Would lose 90%+ of viewers before the halfway point
+
+curiosity — does this create an unanswered question that compels the viewer forward?
+• 75–100: Frame 1 creates immediate tension or mystery that DEMANDS resolution — viewer cannot scroll
+• 55–74: Some intrigue but the payoff is obvious or low-stakes
+• 35–54: Informational — viewer watches for content, not because they MUST know what happens
+• 15–34: No mystery, tension, or surprise visible in any frame
+• 1–14: Completely predictable from the first frame — zero curiosity gap
+
+emotionalImpact — strength of any emotional response triggered (any emotion counts):
+• 75–100: Clear emotional arc across frames — energy builds, a distinct emotional peak is visible
+• 55–74: Moments of resonance but flat or inconsistent delivery across frames
+• 35–54: Emotionally neutral — informative but doesn't move the viewer
+• 15–34: Low energy throughout — frames show monotone delivery, no facial variation or movement
+• 1–14: Alienating, uncomfortable, or emotionally incoherent
+
+rewatchPotential — is there something worth seeing again?
+• 75–100: Contains a payoff, technique, or hidden detail that rewards re-watching
+• 55–74: Enjoyable but nothing specifically missed on first watch
+• 35–54: Single-use content — completely understood on first viewing
+• 15–34: Repetitive or padded — re-watching would add nothing
+• 1–14: Intentionally one-time or time-sensitive content
+
+shareability — psychological trigger to send to a friend or repost:
+• 75–100: "This is EXACTLY [person I know]'s situation" or "I need to save this for later"
+• 55–74: Worth sharing but no specific "send to [name]" trigger moment
+• 35–54: Personal value only — viewer absorbs content and moves on
+• 15–34: Too niche, too promotional, or too forgettable to share
+• 1–14: Active sharing repellent — cringe, misleading, or offensive
+
+commentPotential — how strongly this invites comments, debate, or "me too" responses:
+• 75–100: Makes a claim viewers will agree or disagree with, shows something surprising, or asks a question
+• 55–74: Some comment hooks but not provocative or relatable enough to spark responses
+• 35–54: Informational — viewers consume content without feeling compelled to respond
+• 15–34: Too polished, too obvious, or one-sided for meaningful response
+• 1–14: Comment-suppressing — viewer feels there is nothing to add
+
+pacing — rhythm of edits serves the content (USE measured ${frameData.editingPace} / ${frameData.cutsPerSecond.toFixed(2)} cuts/sec):
+• 75–100: Editing rhythm is intentional — builds tension then releases, no wasted cuts, each frame earns its place
+• 55–74: Mostly good rhythm but one visible dead zone or slightly off-beat section
+• 35–54: Consistent but flat — no energy peaks or valleys, same speed throughout
+• 15–34: Clearly too slow (dead zones across multiple consecutive identical frames) OR too chaotic
+• 1–14: Pacing actively destroys retention — severe dead zone OR disorienting rapid-fire cutting
+
+visualStimulation — richness and visual appeal of what the viewer sees:
+• 75–100: Varied composition, compelling subject, good lighting — every frame is worth looking at
+• 55–74: Good production quality but repetitive framing or limited visual range across frames
+• 35–54: Acceptable — correctly exposed and framed but nothing visually memorable
+• 15–34: One clear visual problem: poor lighting OR fully static framing across ALL frames
+• 1–14: Multiple visual failures — dark + blurry + static + no visual interest throughout
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ANALYZE THESE 10 DIMENSIONS based on what you see in the frames and measured signals:
+1. hookStrength — Frame 1 only (RULE 4): movement, text, emotion, subject clarity?
+2. attention — are there dead zones? Does every frame give a reason to stay?
+3. curiosity — does Frame 1 open a tension or question? Does it get resolved?
+4. emotionalImpact — is there an emotional arc visible across frames?
+5. rewatchPotential — is there anything that rewards a second viewing?
+6. shareability — is there a "must send this to [person]" moment in the frames?
+7. commentPotential — does this make a claim or show something worth debating?
+8. pacing — do the measured ${frameData.cutsPerSecond.toFixed(2)} cuts/sec serve the content? Dead zones?
+9. visualStimulation — lighting, variety, composition quality across all frames
+10. viralPotential — synthesize all the above into one overall organic-reach score
 
 Return VALID JSON in this exact structure:
 {
   "scores": {
-    "viralPotential": <1-100>,
-    "attention": <1-100>,
-    "curiosity": <1-100>,
-    "emotionalImpact": <1-100>,
-    "rewatchPotential": <1-100>,
-    "shareability": <1-100>,
-    "commentPotential": <1-100>,
-    "hookStrength": <1-100 per RULE 4 above>,
-    "pacing": <1-100>,
-    "visualStimulation": <1-100>
+    "viralPotential": <1–100 per RULE 6 — synthesize dimensions 1–9>,
+    "attention": <1–100 per RULE 6>,
+    "curiosity": <1–100 per RULE 6>,
+    "emotionalImpact": <1–100 per RULE 6>,
+    "rewatchPotential": <1–100 per RULE 6>,
+    "shareability": <1–100 per RULE 6>,
+    "commentPotential": <1–100 per RULE 6>,
+    "hookStrength": <1–100 per RULE 4>,
+    "pacing": <1–100 per RULE 6 — must align with measured ${frameData.editingPace} pace>,
+    "visualStimulation": <1–100 per RULE 6>
   },
   "feedback": {
     "strengths": [
@@ -602,11 +671,30 @@ export async function analyzeVideo(
   const isHe = context.language === 'hebrew';
   const timestamps = frameData.frameTimestamps;
 
-  const clamp = (v: unknown) => Math.max(1, Math.min(100, Math.round(Number(v) || 50)));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scores = raw.scores
-    ? Object.fromEntries(Object.entries(raw.scores).map(([k, v]) => [k, clamp(v)])) as any
-    : {} as any;
+  // Clamp a raw score to 1–100. Logs a warning when GPT returns a missing/invalid
+  // value so silent score-convergence bugs are visible in server logs.
+  const clampScore = (v: unknown, key: string): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 1) {
+      console.warn(`[viralyze:score] GPT returned invalid ${key}=${JSON.stringify(v)} — defaulting to 50`);
+      return 50;
+    }
+    return Math.max(1, Math.min(100, Math.round(n)));
+  };
+
+  const rawS = (raw.scores ?? {}) as Record<string, unknown>;
+  const scores = {
+    viralPotential:   clampScore(rawS.viralPotential,   'viralPotential'),
+    attention:        clampScore(rawS.attention,        'attention'),
+    curiosity:        clampScore(rawS.curiosity,        'curiosity'),
+    emotionalImpact:  clampScore(rawS.emotionalImpact,  'emotionalImpact'),
+    rewatchPotential: clampScore(rawS.rewatchPotential, 'rewatchPotential'),
+    shareability:     clampScore(rawS.shareability,     'shareability'),
+    commentPotential: clampScore(rawS.commentPotential, 'commentPotential'),
+    hookStrength:     clampScore(rawS.hookStrength,     'hookStrength'),
+    pacing:           clampScore(rawS.pacing,           'pacing'),
+    visualStimulation:clampScore(rawS.visualStimulation,'visualStimulation'),
+  };
 
   // Clamp timeline seconds to actual duration; reconstruct "time" string from clamped value
   const timeline = Array.isArray(raw.timeline)
@@ -954,7 +1042,14 @@ Return ONLY valid JSON:
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
-  const clamp = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
+  const clampAdaptive = (v: unknown, key: string): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 1) {
+      console.warn(`[viralyze:adaptive] GPT returned invalid ${key}=${JSON.stringify(v)} — defaulting to 50`);
+      return 50;
+    }
+    return Math.max(1, Math.min(100, Math.round(n)));
+  };
   const adTimestamps = frameData.frameTimestamps;
   const adDur = frameData.duration;
 
@@ -962,7 +1057,7 @@ Return ONLY valid JSON:
     ? raw.metrics.slice(0, 6).map((m: Record<string, unknown>) => ({
         key: String(m.key || ''),
         label: String(m.label || ''),
-        score: clamp(m.score),
+        score: clampAdaptive(m.score, String(m.key || 'unknown')),
         explanation: deframe(String(m.explanation || ''), adTimestamps, adDur, isHe),
       }))
     : [];
@@ -1223,10 +1318,17 @@ Return ONLY valid JSON:
   const vpTimestamps = frameData.frameTimestamps;
   const vpDur = frameData.duration;
 
-  const clampScore = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
+  const clampPsych = (v: unknown, key: string): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) {
+      console.warn(`[viralyze:psychology] GPT returned invalid ${key}=${JSON.stringify(v)} — defaulting to 50`);
+      return 50;
+    }
+    return Math.max(0, Math.min(100, Math.round(n)));
+  };
 
   const parseMetric = (key: string): PsychologyMetric => ({
-    score: clampScore(raw[key]?.score),
+    score: clampPsych(raw[key]?.score, key),
     explanation: deframe(String(raw[key]?.explanation || ''), vpTimestamps, vpDur, isHe),
   });
 
@@ -1727,22 +1829,38 @@ Return valid JSON only:`;
         : `\n\nTranscript (${transcriptData.speakingSpeedWpm} wpm): "${transcriptData.transcript.slice(0, 600)}${transcriptData.transcript.length > 600 ? '…' : ''}"`)
     : (isHe ? '\n\nאין דיבור — נתח לפי ויזואל בלבד.' : '\n\nNo speech detected — analyze visuals only.');
 
+  const viralScoreGuide = isHe
+    ? `\n\nמדריך ניקוד — כל ממד (השתמש בטווחים האלה ולא אמצעיים):
+• 75–100: אלמנט פסיכולוגי חזק מאוד — ברור ומוכח בתוכן
+• 55–74: קיים אבל חלש — הצופה מרגיש אבל לא עד הסוף
+• 35–54: ניטרלי — לא נוכח בצורה משמעותית
+• 15–34: חלש — נראה בתוכן אבל לא עובד
+• 1–14: נפגע ממנו — פוגע בפוטנציאל הוויראלי
+ציון 48–55 אסור אלא אם תסביר בדיוק למה ממד זה הוא בדיוק ממוצע עבור הסרטון הזה.`
+    : `\n\nScoring guide — each dimension (use these bands, not middle scores):
+• 75–100: Strong psychological signal — clearly present and working in this content
+• 55–74: Present but weak — viewer feels it but not compelled by it
+• 35–54: Neutral — not meaningfully present
+• 15–34: Weak — visible but not working
+• 1–14: Actively hurts viral potential
+A score of 48–55 is FORBIDDEN unless you explain exactly why this dimension is precisely average for this specific video.`;
+
   const schema = `{
-  "viralScore": <0-100 overall viral potential>,
+  "viralScore": <0-100 overall viral potential — weighted average of dimensions, biased toward shareability and emotionalImpact>,
   "dimensions": {
-    "shareability":     { "score": <0-100>, "insight": "<specific psychological reason>" },
-    "emotionalImpact":  { "score": <0-100>, "insight": "<which emotion, how strongly, why>" },
-    "relatability":     { "score": <0-100>, "insight": "<who relates, why, how many>" },
-    "commentPotential": { "score": <0-100>, "insight": "<what triggers comments or debate>" },
-    "rewatchPotential": { "score": <0-100>, "insight": "<reason to watch again>" },
-    "memorability":     { "score": <0-100>, "insight": "<what sticks, why it stays with the viewer>" }
+    "shareability":     { "score": <0-100 per scoring guide>, "insight": "<specific psychological trigger or absence of one>" },
+    "emotionalImpact":  { "score": <0-100 per scoring guide>, "insight": "<which emotion, how strongly triggered, why>" },
+    "relatability":     { "score": <0-100 per scoring guide>, "insight": "<who relates, how many, why>" },
+    "commentPotential": { "score": <0-100 per scoring guide>, "insight": "<specific claim or moment that invites debate/agreement>" },
+    "rewatchPotential": { "score": <0-100 per scoring guide>, "insight": "<specific reason to watch again or lack thereof>" },
+    "memorability":     { "score": <0-100 per scoring guide>, "insight": "<what sticks and why, or why nothing does>" }
   },
-  "boosts": ["<specific virality booster + psychological why>", ...],
-  "drags":  ["<specific virality drag + psychological why>", ...],
-  "mostViralElement": "<detailed explanation of the strongest viral element in this content>",
-  "biggestMissedOpportunity": "<detailed explanation of the biggest viral opportunity not taken>",
-  "topImprovement": "<one specific, actionable recommendation that would most increase viral potential>"
-}`;
+  "boosts": ["<specific virality booster + exact psychological mechanism>", ...],
+  "drags":  ["<specific virality drag + exact psychological mechanism>", ...],
+  "mostViralElement": "<the single strongest viral element and the exact psychological reason it works>",
+  "biggestMissedOpportunity": "<the biggest viral opportunity not taken and how to capture it>",
+  "topImprovement": "<one specific, actionable change that would most increase viral potential>"
+}${viralScoreGuide}`;
 
   const userText = isHe
     ? `נתח את הפוטנציאל הוויראלי של הסרטון הזה.\n\n${contextLine}${transcriptHint}\n\n${schema}`
@@ -1770,15 +1888,23 @@ Return valid JSON only:`;
   });
 
   const raw = JSON.parse(completion.choices[0].message.content || '{}');
-  const clamp = (v: unknown) => Math.max(1, Math.min(100, Math.round(Number(v) || 50)));
+
+  const clampViral = (v: unknown, key: string): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 1) {
+      console.warn(`[viralyze:viral] GPT returned invalid ${key}=${JSON.stringify(v)} — defaulting to 50`);
+      return 50;
+    }
+    return Math.max(1, Math.min(100, Math.round(n)));
+  };
 
   const dim = (key: string): ViralDimension => ({
-    score: clamp(raw.dimensions?.[key]?.score),
+    score: clampViral(raw.dimensions?.[key]?.score, `dimensions.${key}.score`),
     insight: String(raw.dimensions?.[key]?.insight || ''),
   });
 
   return {
-    viralScore: clamp(raw.viralScore),
+    viralScore: clampViral(raw.viralScore, 'viralScore'),
     dimensions: {
       shareability:     dim('shareability'),
       emotionalImpact:  dim('emotionalImpact'),
