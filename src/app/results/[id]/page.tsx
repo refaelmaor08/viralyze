@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw, LayoutDashboard, Clock, TrendingUp, Type } from 'lucide-react';
+import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw, LayoutDashboard, Clock, TrendingUp } from 'lucide-react';
 import { AnalysisResult, CompetitorAnalysis } from '@/types';
 import { getStoredResult } from '@/lib/history';
 import ScoreDashboard from '@/components/results/ScoreDashboard';
@@ -14,12 +14,11 @@ import FixMyVideo from '@/components/results/FixMyVideo';
 import CompetitorPanel from '@/components/results/CompetitorPanel';
 import VisualTimeline from '@/components/results/VisualTimeline';
 import ViralPotentialResult from '@/components/results/ViralPotentialResult';
-import OcrPanel from '@/components/results/OcrPanel';
 import DevPanel from '@/components/results/DevPanel';
 
 const IS_DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
-type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'timeline' | 'competitor' | 'viral' | 'text';
+type Tab = 'scores' | 'feedback' | 'suggestions' | 'fix' | 'timeline' | 'competitor' | 'viral';
 
 const tabs: { id: Tab; label: string; icon: React.ElementType; requiresField?: string }[] = [
   { id: 'scores',     label: 'ציונים',         icon: BarChart3 },
@@ -28,7 +27,6 @@ const tabs: { id: Tab; label: string; icon: React.ElementType; requiresField?: s
   { id: 'suggestions',label: 'המלצות',         icon: Zap },
   { id: 'fix',        label: 'תקן',            icon: Scissors },
   { id: 'timeline',   label: 'ציר זמן',        icon: Clock },
-  { id: 'text',       label: 'טקסט',           icon: Type },
   { id: 'competitor', label: 'מתחרים',         icon: Search },
 ];
 
@@ -226,13 +224,6 @@ export default function ResultsPage() {
             {activeTab === 'suggestions' && <SuggestionsPanel suggestions={result.suggestions} />}
             {activeTab === 'fix' && <FixMyVideo suggestions={result.fixMyVideo} />}
             {activeTab === 'timeline' && <VisualTimeline entries={result.timeline ?? []} />}
-            {activeTab === 'text' && (
-              <OcrPanel
-                ocr={result.ocr ?? { frames: [], allText: [], segments: [], hasText: false, hookText: [] }}
-                language={context?.language ?? 'hebrew'}
-                videoMetadata={result.videoMetadata}
-              />
-            )}
             {activeTab === 'competitor' && (
               <CompetitorPanel
                 onAnalyze={handleCompetitorAnalyze}

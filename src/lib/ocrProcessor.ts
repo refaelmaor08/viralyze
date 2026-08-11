@@ -295,27 +295,27 @@ export function buildOcrSection(ocr: OcrData, duration: number, isHe: boolean): 
   const hookNote = ocr.hookText.length > 0
     ? (isHe
         ? `▸ טקסט בפתיחה (0–3s): ${ocr.hookText.map((t) => `"${t}"`).join(', ')}`
-        : `▸ Hook zone text (0–3s): ${ocr.hookText.map((t) => `"${t}"`).join(', ')}`)
-    : (isHe ? '▸ אין טקסט בפתיחה (0–3s)' : '▸ No text in hook zone (0–3s)');
+        : `▸ Opening zone text (0–3s): ${ocr.hookText.map((t) => `"${t}"`).join(', ')}`)
+    : (isHe ? '▸ אין טקסט גלוי בפתיחה (0–3s)' : '▸ No text visible in opening zone (0–3s)');
 
   const textRelationNote = isHe
-    ? `\nOCR RULE — חובה לקרוא:
-▸ השתמש בטקסט שגולה לעיל כראיה לניתוח — אל תמציא טקסט שלא מופיע.
-▸ השווה בין הטקסט הנראה לבין מה שנאמר בתמלול — האם הם חוזרים, מוסיפים, או סותרים?
-▸ כאשר הטקסט בפתיחה חזק — ציין זאת בחוזקות ה-Hook.
-▸ כאשר הטקסט חלש או נעדר — אל תזכיר בעיות כתוביות שאינן נראות.
-▸ אסור לטעון שהטקסט קשה לקריאה / קטן מדי / ניגוד נמוך אלא אם ציון הביטחון הוא פחות מ-0.7.`
-    : `\nOCR RULE — mandatory:
-▸ Use the text extracted above as evidence — do NOT invent text that isn't listed.
-▸ Compare visible text with transcript speech — does it repeat, summarize, add, or contrast?
-▸ When hook-zone text is strong — credit it in hookStrength reasoning.
-▸ When text is absent or minimal — do NOT manufacture subtitle feedback.
-▸ Never claim text is hard to read / too small / low contrast unless confidence was < 0.7.`;
+    ? `\nהנחיות פרשנות OCR — חובה:
+▸ אל תרשום רק את הטקסט — תבין מה הוא עושה. האם הטקסט בפתיחה יוצר סקרנות? הבטחה? שאלה? טענה? CTA?
+▸ השווה בין הטקסט הנראה לבין מה שנאמר: האם הם מחזקים אחד את השני (כוח כפול) או שחוזרים על אותו דבר (בזבוז)?
+▸ אם טקסט הפתיחה חזק — ציין אותו כגורם מרכזי בחוזק ה-Hook (hookStrength).
+▸ אם טקסט נוסף מידע שלא נאמר בפה — ציין זאת. אם הוא רק חוזר — ציין שזה כפילות.
+▸ אל תיצור בעיות כתוביות שלא קיימות. אל תטען שהטקסט קטן/קשה לקריאה אלא אם confidence < 0.7.`
+    : `\nOCR INTERPRETATION INSTRUCTIONS — mandatory:
+▸ Don't just list the text — understand what it DOES. Does the opening text create curiosity? Make a promise? Pose a question? Make a bold claim? Is it a CTA?
+▸ Compare text with speech: do they reinforce each other (multiplied impact) or repeat the same thing (wasted opportunity)?
+▸ If opening-zone text is strong — credit it as a major factor in hookStrength.
+▸ If text adds information NOT spoken — note this as complementary value. If it only repeats speech — note this as redundancy.
+▸ Never invent text-quality problems. Never claim text is unreadable unless confidence < 0.7.`;
 
   return `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OCR — ON-SCREEN TEXT (extracted before analysis — use as evidence):
-Video duration: ${dur}s | Text segments found: ${ocr.segments.length}
+ON-SCREEN TEXT (OCR — extracted before analysis. Treat as factual evidence):
+Duration: ${dur}s | Segments detected: ${ocr.segments.length}
 
 ${segmentLines}
 
