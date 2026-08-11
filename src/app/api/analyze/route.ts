@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo, analyzeViralPotential } from '@/lib/aiProvider';
-import { SimpleVideoContext, VideoFrameData, TranscriptData } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData } from '@/types';
 
 export const maxDuration = 120;
 
@@ -16,14 +16,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null };
+    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null; ocrData?: OcrData | null };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { frameData, context, transcriptData } = body;
+    const { frameData, context, transcriptData, ocrData } = body;
 
     // ── Analysis payload audit log ──────────────────────────────────────────
     console.log('[viralyze:analyze] payload', JSON.stringify({
@@ -71,8 +71,16 @@ export async function POST(req: NextRequest) {
     }));
     // ────────────────────────────────────────────────────────────────────────────
 
+    if (ocrData) {
+      console.log('[viralyze:analyze] ocrData received', {
+        hasText: ocrData.hasText,
+        segments: ocrData.segments?.length ?? 0,
+        allTextCount: ocrData.allText?.length ?? 0,
+      });
+    }
+
     const [result, viralAnalysis] = await Promise.all([
-      analyzeVideo(frameData, context, transcriptData ?? null),
+      analyzeVideo(frameData, context, transcriptData ?? null, ocrData ?? null),
       analyzeViralPotential(frameData, context, transcriptData ?? null),
     ]);
     result.viralAnalysis = viralAnalysis;

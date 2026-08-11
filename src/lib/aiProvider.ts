@@ -24,6 +24,7 @@ import type {
   LanguageSafetyAnalysis,
   TranscriptData,
   ViralPotentialAnalysis,
+  OcrData,
 } from '@/types';
 
 // Default to 'real' when OPENAI_API_KEY is present; fall back to 'demo' only when no key configured
@@ -1191,7 +1192,8 @@ export async function analyzePerceptionGap(
 export async function analyzeVideo(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
-  transcriptData?: TranscriptData | null
+  transcriptData?: TranscriptData | null,
+  ocrData?: OcrData | null
 ): Promise<AnalysisResult> {
   if (AI_MODE === 'demo') {
     return getDemoAnalysis(context);
@@ -1203,7 +1205,7 @@ export async function analyzeVideo(
 
   // Default: OpenAI
   const { analyzeVideo: openaiAnalyze } = await import('./openai');
-  return openaiAnalyze(frameData, context, transcriptData);
+  return openaiAnalyze(frameData, context, transcriptData, ocrData);
 }
 
 export async function analyzeAdaptive(

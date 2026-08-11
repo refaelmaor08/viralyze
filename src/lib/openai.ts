@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData, ViralPotentialAnalysis, ViralDimension } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData, ViralPotentialAnalysis, ViralDimension, OcrData } from '@/types';
+import { buildOcrSection } from '@/lib/ocrProcessor';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -247,7 +248,7 @@ RULE 5 — TRANSCRIPT EVIDENCE (mandatory):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 
-function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null): string {
+function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null, ocrData?: OcrData | null): string {
   const dur = Math.round(frameData.duration);
   const durFormatted = formatSec(dur);
   const isHe = context.language === 'hebrew';
@@ -292,6 +293,7 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, tra
     : '';
 
   const transcriptSection = buildTranscriptSection(transcriptData, isHe);
+  const ocrSection = ocrData ? buildOcrSection(ocrData, dur, isHe) : '';
 
   const lowFrameWarning = frameCount < 5
     ? `\n⚠️ VERY FEW FRAMES (${frameCount}): The video format may have caused partial extraction (e.g. HEVC/H.265 on an unsupported browser). Score conservatively — write "${isHe ? 'נתוני ויזואל מוגבלים' : 'Limited visual data'}" rather than inventing observations. Do NOT give scores of 1 unless you have genuine evidence of failure.\n`
@@ -314,7 +316,7 @@ MEASURED VIDEO SIGNALS (extracted client-side before AI analysis — use these e
 
 When scoring "pacing": base it on the measured ${frameData.editingPace} pace (${frameData.cutsPerSecond.toFixed(2)} cuts/sec). Do not contradict these measurements.
 When scoring "hookStrength": you have dense frame coverage of the first 3 seconds — describe exactly what you see in those frames.
-${transcriptSection}
+${transcriptSection}${ocrSection}
 ${contextualInstructions ? `CONSTRAINTS:\n${contextualInstructions}\n` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 1 — DURATION (ABSOLUTE, NO EXCEPTIONS)
@@ -496,11 +498,8 @@ Return VALID JSON in this exact structure:
       "text": "<one short sentence about this moment>"
     }
   ],
-  "executiveSummary": "<3-4 sentence honest summary based solely on what you saw in the frames>",
-  "overallVerdict": "<one honest sentence about this specific video — no invented timestamps>",
-  "ocr": [
-    { "frame": <1-based frame number>, "texts": ["<every legible text string visible on screen in this frame>"] }
-  ]
+  "executiveSummary": "<3-4 sentence honest summary. Incorporate any OCR text and transcript evidence when available>",
+  "overallVerdict": "<one honest sentence about this specific video — no invented timestamps>"
 }
 
 Timeline rules:
@@ -508,13 +507,7 @@ Timeline rules:
 - EVERY seconds value must be ≤ ${dur} — this is enforced server-side and any value > ${dur} will be dropped
 - Use frame positions as anchor points, not invented timestamps
 
-OCR rules:
-- Include ONLY frames where on-screen text is legible (subtitles, captions, overlays, logos, graphics)
-- List every distinct text string in the "texts" array for that frame
-- Omit frames that contain no visible text
-- Do NOT include placeholder text like "<no text>" — simply omit the frame
-
-Be brutally honest. Reference specific frames. Never mention a time beyond ${dur}s.`;
+Be brutally honest. Reference specific frames. Use OCR and transcript evidence when available. Never mention a time beyond ${dur}s.`;
 }
 
 export async function analyzePerceptionGap(
@@ -652,14 +645,15 @@ Rules for topMismatches:
 export async function analyzeVideo(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
-  transcriptData?: TranscriptData | null
+  transcriptData?: TranscriptData | null,
+  ocrData?: OcrData | null
 ): Promise<AnalysisResult> {
   // Hook frames (first 3) get high detail so GPT can actually distinguish between
   // different videos at the critical opening. Low detail (85 tokens) makes all
   // talking-head videos look identical; high detail (1105 tokens) shows expressions,
   // text overlays, lighting and movement that differentiate content.
   const content: ChatCompletionContentPart[] = [
-    { type: 'text', text: buildPrompt(frameData, context, transcriptData) },
+    { type: 'text', text: buildPrompt(frameData, context, transcriptData, ocrData) },
     ...frameData.frames.map(
       (frame, idx): ChatCompletionContentPart => ({
         type: 'image_url',
@@ -762,16 +756,15 @@ export async function analyzeVideo(
     immediateChanges: deframeArr(filterStrings(fb.immediateChanges, durRounded), timestamps, dur, isHe),
   };
 
-  // Extract on-screen text (OCR) reported by GPT for each frame
-  const ocrRaw: { frame: number; texts: unknown[] }[] = Array.isArray(raw.ocr) ? raw.ocr : [];
-  const ocrFrames = ocrRaw
-    .filter((f) => typeof f.frame === 'number' && Array.isArray(f.texts))
-    .map((f) => ({
-      timestamp: timestamps[f.frame - 1] ?? 0,
-      texts: f.texts.map(String).filter(Boolean),
-    }))
-    .filter((f) => f.texts.length > 0);
-  const allText = [...new Set(ocrFrames.flatMap((f) => f.texts))];
+  // Use pre-extracted OCR data (from /api/ocr) if available,
+  // otherwise return an empty but valid OcrData structure.
+  const resolvedOcr: import('@/types').OcrData = ocrData ?? {
+    frames: [],
+    allText: [],
+    segments: [],
+    hasText: false,
+    hookText: [],
+  };
 
   return {
     id: crypto.randomUUID(),
@@ -783,7 +776,7 @@ export async function analyzeVideo(
     executiveSummary: deframe(String(raw.executiveSummary || ''), timestamps, dur, isHe),
     overallVerdict: deframe(String(raw.overallVerdict || ''), timestamps, dur, isHe),
     createdAt: new Date().toISOString(),
-    ocr: { frames: ocrFrames, allText },
+    ocr: resolvedOcr,
     _debug: {
       frameCount: frameData.frames.length,
       frameTimestamps: frameData.frameTimestamps,

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData, TranscriptData } from '@/types';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData, TranscriptData, OcrData, VideoMetadata } from '@/types';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
@@ -374,23 +374,76 @@ function AnalyzeContent() {
         return;
       }
 
-      // Transcribe audio if available (runs during the scanning screen)
+      // Build video metadata from file + extracted frame data
+      const videoMetadata: VideoMetadata = {
+        duration: finalFrameData.duration,
+        width: finalFrameData.width,
+        height: finalFrameData.height,
+        aspectRatio: (() => {
+          const w = finalFrameData.width;
+          const h = finalFrameData.height;
+          if (!w || !h) return 'unknown';
+          const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+          const d = gcd(w, h);
+          return `${w / d}:${h / d}`;
+        })(),
+        fileSize: file!.size,
+        mimeType: file!.type || 'video/mp4',
+        hasAudio: audioBlobRef.current !== null,
+      };
+
+      // Transcribe audio and extract OCR in parallel (both are non-fatal)
       let transcriptData: TranscriptData | null = null;
-      if (audioBlobRef.current) {
-        try {
-          const audioForm = new FormData();
-          audioForm.append('audio', audioBlobRef.current, 'audio.wav');
-          const transcribeRes = await fetch('/api/transcribe', {
-            method: 'POST',
-            body: audioForm,
-          });
-          if (transcribeRes.ok) {
-            transcriptData = await transcribeRes.json() as TranscriptData;
+      let ocrData: OcrData | null = null;
+
+      const analysisContext: SimpleVideoContext = {
+        platforms: context.platforms ?? ['instagram'],
+        language: context.language || 'hebrew',
+        niche: context.niche,
+        goals: context.goals,
+        contentType: context.contentType,
+        editability: context.editability,
+        audienceAge: context.audienceAge,
+        audienceGender: context.audienceGender,
+      };
+
+      await Promise.all([
+        // Transcription
+        (async () => {
+          if (!audioBlobRef.current) return;
+          try {
+            const audioForm = new FormData();
+            audioForm.append('audio', audioBlobRef.current, 'audio.wav');
+            const res = await fetch('/api/transcribe', { method: 'POST', body: audioForm });
+            if (res.ok) transcriptData = await res.json() as TranscriptData;
+          } catch {
+            // non-fatal
           }
-        } catch {
-          // Transcription failure is non-fatal — continue with frames-only analysis
-        }
-      }
+        })(),
+        // OCR extraction (parallel with transcription)
+        (async () => {
+          if (finalFrameData.frames.length === 0) return;
+          try {
+            const res = await fetch('/api/ocr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                frames: finalFrameData.frames,
+                frameTimestamps: finalFrameData.frameTimestamps,
+                duration: finalFrameData.duration,
+                language: analysisContext.language,
+              }),
+            });
+            if (res.ok) {
+              const raw = await res.json() as OcrData;
+              // Only use if it has the expected structure
+              if (typeof raw.hasText === 'boolean') ocrData = raw;
+            }
+          } catch {
+            // OCR failure is non-fatal — analysis proceeds without OCR evidence
+          }
+        })(),
+      ]);
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -398,16 +451,8 @@ function AnalyzeContent() {
         body: JSON.stringify({
           frameData: finalFrameData,
           transcriptData,
-          context: {
-            platforms: context.platforms ?? ['instagram'],
-            language: context.language || 'hebrew',
-            niche: context.niche,
-            goals: context.goals,
-            contentType: context.contentType,
-            editability: context.editability,
-            audienceAge: context.audienceAge,
-            audienceGender: context.audienceGender,
-          } satisfies SimpleVideoContext,
+          ocrData,
+          context: analysisContext,
         }),
       });
 
@@ -415,6 +460,8 @@ function AnalyzeContent() {
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       const result = data as AnalysisResult;
+      // Attach video metadata to the result (client-side enrichment)
+      result.videoMetadata = videoMetadata;
 
       // ── Client-side score pipeline log (check browser console) ──────────────
       console.log('[viralyze:client-scores]', JSON.stringify({

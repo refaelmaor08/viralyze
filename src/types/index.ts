@@ -101,6 +101,7 @@ export interface AnalysisResult {
   _debug?: DevDebugData;
   viralAnalysis?: ViralPotentialAnalysis;
   ocr?: OcrData;
+  videoMetadata?: VideoMetadata;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────
@@ -335,9 +336,48 @@ export interface OcrFrame {
   texts: string[];
 }
 
+export type OcrTextPosition = 'top' | 'center' | 'bottom' | 'overlay';
+
+export type OcrTextCategory =
+  | 'hook'
+  | 'subtitle'
+  | 'caption'
+  | 'cta'
+  | 'title'
+  | 'label'
+  | 'question'
+  | 'overlay'
+  | 'other';
+
+export interface OcrSegment {
+  text: string;
+  startTime: number;
+  endTime: number;
+  confidence: number;
+  position: OcrTextPosition;
+  frameOccurrences: number;
+  category?: OcrTextCategory;
+  textLanguage?: 'hebrew' | 'english' | 'mixed' | 'unknown';
+}
+
 export interface OcrData {
-  frames: OcrFrame[];
-  allText: string[];
+  frames: OcrFrame[];        // raw per-frame data (backward compat)
+  allText: string[];         // all unique text strings
+  segments: OcrSegment[];    // deduplicated time-ranged segments
+  hasText: boolean;
+  hookText: string[];        // text appearing in the first 3 seconds
+}
+
+// ─── Video Metadata ───────────────────────────────────────────────────────────
+
+export interface VideoMetadata {
+  duration: number;          // seconds
+  width: number;             // pixels
+  height: number;            // pixels
+  aspectRatio: string;       // e.g. "9:16", "16:9"
+  fileSize: number;          // bytes
+  mimeType: string;          // e.g. "video/mp4"
+  hasAudio: boolean;
 }
 
 // ─── Viral Potential Analysis ─────────────────────────────────────────────────
