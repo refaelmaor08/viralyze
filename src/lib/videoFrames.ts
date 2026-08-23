@@ -147,10 +147,17 @@ export async function extractFrames(
       const isMovFile = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov') || file.name.toLowerCase().endsWith('.hevc');
       const isHevc = isMovFile;
 
+      // iOS Safari supports rVFC but canvas pixel readback of GPU-decoded frames
+      // during playback returns black consistently (GPU→CPU transfer issue on iOS).
+      // Seek-based extraction does not require play() and gives correct pixel data
+      // directly from the iOS hardware decoder on a paused/seeked video.
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
       // Cast to boolean to prevent TypeScript from narrowing `video` to `never`
       // in the else branch (the DOM lib includes requestVideoFrameCallback on HTMLVideoElement)
-      const rVFCSupport = ('requestVideoFrameCallback' in video) as boolean;
-      const method = rVFCSupport ? 'playback+rVFC' : 'seek+rAF';
+      const rVFCSupport = (!isIOS && 'requestVideoFrameCallback' in video) as boolean;
+      const method = rVFCSupport ? 'playback+rVFC' : isIOS ? 'seek+rAF(iOS)' : 'seek+rAF';
 
       log(`metadata: ${video.videoWidth}×${video.videoHeight} dur=${dur.toFixed(1)}s`);
       log(`codec support: hevc="${hevcPlayType || 'no'}" isMovFile=${isMovFile} rVFC=${rVFCSupport}`);
@@ -269,11 +276,12 @@ export async function extractFrames(
         });
 
       } else {
-        // ── SEEK MODE (fallback — Firefox and browsers without rVFC) ────────
+        // ── SEEK MODE (fallback — Firefox, iOS, and browsers without rVFC) ────
         log('using seek+rAF mode (no rVFC support)');
         let idx = 0;
         let seekTimer: ReturnType<typeof setTimeout> | null = null;
-        const SEEK_TIMEOUT_MS = 3000;
+        // iOS hardware decoder warm-up after seek can take longer than desktop
+        const SEEK_TIMEOUT_MS = isIOS ? 5000 : 3000;
 
         const clearSeekTimer = () => {
           if (seekTimer) { clearTimeout(seekTimer); seekTimer = null; }
@@ -305,15 +313,18 @@ export async function extractFrames(
             onProgress?.(idx + 1, total);
             idx++;
             next();
-          }, 1500);
+          }, isIOS ? 2500 : 1500);
 
           const captureLoop = () => {
             if (captureSettled) return;
             ctx.drawImage(video, 0, 0, W, H);
             const imgData = ctx.getImageData(0, 0, W, H);
-            if (isLikelyBlack(imgData) && captureAttempt < 2) {
+            // iOS GPU-to-CPU frame transfer can take longer; allow extra retries
+            const maxBlackRetries = isIOS ? 4 : 2;
+            const blackRetryDelayMs = isIOS ? 200 : 120;
+            if (isLikelyBlack(imgData) && captureAttempt < maxBlackRetries) {
               captureAttempt++;
-              setTimeout(captureLoop, 120);
+              setTimeout(captureLoop, blackRetryDelayMs);
               return;
             }
             clearTimeout(captureGiveUp);

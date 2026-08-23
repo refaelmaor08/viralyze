@@ -158,31 +158,45 @@ function AnalyzeContent() {
       // decoder (Chrome on Windows/Intel Mac). FFmpeg WASM has its own software
       // decoder and handles the file directly, targeting the same frame count as
       // the normalised browser path (MAX_AI_FRAMES = 12).
+      //
+      // iOS exception: WASM (~30MB download + pure-software decode) is impractical
+      // on iOS. The seek-based browser path (forced by videoFrames.ts) should have
+      // succeeded; if it returned 0 frames the video format is not decodable here.
       if (extracted.frames.length === 0) {
-        console.log(`[viralyze:prepare] 0 frames — starting WASM fallback (${elapsed()})`);
-        setFrameProgress({ current: 0, total: 1 });
-        try {
-          const { extractFramesViaFfmpeg } = await import('@/lib/ffmpegFallback');
-          const wasm = await extractFramesViaFfmpeg(
-            selectedFile,
-            meta.duration,
-            (current, total) => setFrameProgress({ current, total }),
-          );
-          console.log(`[viralyze:prepare] WASM: ${wasm.frames.length} frames (${elapsed()})`);
-          if (wasm.frames.length > 0) {
-            // Compute scene-change data from the WASM frames since the browser
-            // extraction returned nothing and therefore has no pacing data.
-            const pacing = await computePacingFromFrames(wasm.frames, wasm.frameTimestamps, meta.duration);
-            finalFrames    = wasm.frames;
-            finalTs        = wasm.frameTimestamps;
-            finalScene     = pacing.sceneChanges;
-            finalPace      = pacing.editingPace;
-            finalCuts      = pacing.cutsPerSecond;
-            extractionPath = 'wasm';
+        const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+        if (isIOSDevice) {
+          console.warn(`[viralyze:prepare] iOS: 0 frames from browser seek path, skipping WASM (${elapsed()})`);
+          setPrepWarning('לא ניתן לקרוא פריימים מהסרטון. נסה להמיר לפורמט MP4 ולשלוח מחדש, או עדכן את גרסת iOS.');
+        } else {
+          console.log(`[viralyze:prepare] 0 frames — starting WASM fallback (${elapsed()})`);
+          // Show a realistic target count so the user sees "0/20" not "0/1"
+          const wasmFrameTarget = meta.duration <= 60 ? 20 : meta.duration <= 120 ? 30 : 40;
+          setFrameProgress({ current: 0, total: wasmFrameTarget });
+          try {
+            const { extractFramesViaFfmpeg } = await import('@/lib/ffmpegFallback');
+            const wasm = await extractFramesViaFfmpeg(
+              selectedFile,
+              meta.duration,
+              (current, total) => setFrameProgress({ current, total }),
+            );
+            console.log(`[viralyze:prepare] WASM: ${wasm.frames.length} frames (${elapsed()})`);
+            if (wasm.frames.length > 0) {
+              // Compute scene-change data from the WASM frames since the browser
+              // extraction returned nothing and therefore has no pacing data.
+              const pacing = await computePacingFromFrames(wasm.frames, wasm.frameTimestamps, meta.duration);
+              finalFrames    = wasm.frames;
+              finalTs        = wasm.frameTimestamps;
+              finalScene     = pacing.sceneChanges;
+              finalPace      = pacing.editingPace;
+              finalCuts      = pacing.cutsPerSecond;
+              extractionPath = 'wasm';
+            }
+          } catch (wasmErr) {
+            console.warn(`[viralyze:prepare] WASM fallback failed: ${wasmErr} (${elapsed()})`);
+            // Continue — handleAnalyze surfaces the 0-frame error
           }
-        } catch (wasmErr) {
-          console.warn(`[viralyze:prepare] WASM fallback failed: ${wasmErr} (${elapsed()})`);
-          // Continue — handleAnalyze surfaces the 0-frame error
         }
       }
       // ─────────────────────────────────────────────────────────────────────
