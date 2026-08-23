@@ -100,7 +100,7 @@ function AnalyzeContent() {
 
     try {
       const { extractFrames, getVideoMeta } = await import('@/lib/videoFrames');
-      const { normalizeFramesForAI, computePacingFromFrames } = await import('@/lib/frameNormalize');
+      const { normalizeFramesForAI } = await import('@/lib/frameNormalize');
 
       const meta = await getVideoMeta(selectedFile);
       console.log(`[viralyze:prepare] metadata: ${meta.duration.toFixed(1)}s ${meta.width}×${meta.height} (${elapsed()})`);
@@ -153,50 +153,74 @@ function AnalyzeContent() {
       let finalCuts      = extracted.cutsPerSecond;
       let extractionPath = 'browser';
 
-      // ── WASM FALLBACK ─────────────────────────────────────────────────────
-      // Browser extraction returns 0 frames when the browser has no HEVC hardware
-      // decoder (Chrome on Windows/Intel Mac). FFmpeg WASM has its own software
-      // decoder and handles the file directly, targeting the same frame count as
-      // the normalised browser path (MAX_AI_FRAMES = 12).
-      //
-      // iOS exception: WASM (~30MB download + pure-software decode) is impractical
-      // on iOS. The seek-based browser path (forced by videoFrames.ts) should have
-      // succeeded; if it returned 0 frames the video format is not decodable here.
+      // ── SERVER-SIDE FFmpeg FALLBACK ──────────────────────────────────────
+      // Browser extraction returns 0 frames for iPhone HEVC/Dolby Vision (HDR):
+      // the iOS sRGB canvas cannot represent HDR pixel values from the hardware
+      // decoder, so every frame reads back as black and is discarded.
+      // Server-side FFmpeg has a full software HEVC decoder and handles all
+      // iPhone formats correctly (HEVC, ProRes, Dolby Vision, H.264).
       if (extracted.frames.length === 0) {
-        const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-          (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+        const serverFrameTarget = meta.duration <= 60 ? 20 : meta.duration <= 120 ? 30 : 40;
+        setFrameProgress({ current: 0, total: serverFrameTarget });
+        console.log(`[viralyze:prepare] 0 frames from browser — uploading to server FFmpeg fallback (${elapsed()})`);
 
-        if (isIOSDevice) {
-          console.warn(`[viralyze:prepare] iOS: 0 frames from browser seek path, skipping WASM (${elapsed()})`);
-          setPrepWarning('לא ניתן לקרוא פריימים מהסרטון. נסה להמיר לפורמט MP4 ולשלוח מחדש, או עדכן את גרסת iOS.');
-        } else {
-          console.log(`[viralyze:prepare] 0 frames — starting WASM fallback (${elapsed()})`);
-          // Show a realistic target count so the user sees "0/20" not "0/1"
-          const wasmFrameTarget = meta.duration <= 60 ? 20 : meta.duration <= 120 ? 30 : 40;
-          setFrameProgress({ current: 0, total: wasmFrameTarget });
-          try {
-            const { extractFramesViaFfmpeg } = await import('@/lib/ffmpegFallback');
-            const wasm = await extractFramesViaFfmpeg(
-              selectedFile,
-              meta.duration,
-              (current, total) => setFrameProgress({ current, total }),
-            );
-            console.log(`[viralyze:prepare] WASM: ${wasm.frames.length} frames (${elapsed()})`);
-            if (wasm.frames.length > 0) {
-              // Compute scene-change data from the WASM frames since the browser
-              // extraction returned nothing and therefore has no pacing data.
-              const pacing = await computePacingFromFrames(wasm.frames, wasm.frameTimestamps, meta.duration);
-              finalFrames    = wasm.frames;
-              finalTs        = wasm.frameTimestamps;
-              finalScene     = pacing.sceneChanges;
-              finalPace      = pacing.editingPace;
-              finalCuts      = pacing.cutsPerSecond;
-              extractionPath = 'wasm';
+        // Simulate progress increments while the server processes (takes 15-60s)
+        let simProgress = 0;
+        const progressTimer = setInterval(() => {
+          simProgress = Math.min(simProgress + 2, serverFrameTarget - 1);
+          setFrameProgress({ current: simProgress, total: serverFrameTarget });
+        }, 3_000);
+
+        try {
+          const serverForm = new FormData();
+          serverForm.append('video', selectedFile);
+          serverForm.append('duration', meta.duration.toFixed(3));
+
+          const controller = new AbortController();
+          const abortTimer = setTimeout(() => controller.abort(), 100_000);
+
+          const serverRes = await fetch('/api/extract-frames', {
+            method: 'POST',
+            body: serverForm,
+            signal: controller.signal,
+          });
+
+          clearTimeout(abortTimer);
+
+          if (serverRes.ok) {
+            const serverData = await serverRes.json() as {
+              frames: string[];
+              frameTimestamps: number[];
+              sceneChanges: number[];
+              editingPace: 'slow' | 'medium' | 'fast';
+              cutsPerSecond: number;
+            };
+            if (serverData.frames?.length > 0) {
+              finalFrames    = serverData.frames;
+              finalTs        = serverData.frameTimestamps;
+              finalScene     = serverData.sceneChanges ?? [];
+              finalPace      = serverData.editingPace ?? 'medium';
+              finalCuts      = serverData.cutsPerSecond ?? 0;
+              extractionPath = 'server-ffmpeg';
+              setFrameProgress({ current: serverFrameTarget, total: serverFrameTarget });
+              console.log(`[viralyze:prepare] server FFmpeg: ${serverData.frames.length} frames (${elapsed()})`);
+            } else {
+              console.warn(`[viralyze:prepare] server FFmpeg returned 0 frames (${elapsed()})`);
+              setPrepWarning('לא ניתן לחלץ פריימים מהסרטון — נסה להמיר לפורמט MP4 ולשלוח מחדש.');
             }
-          } catch (wasmErr) {
-            console.warn(`[viralyze:prepare] WASM fallback failed: ${wasmErr} (${elapsed()})`);
-            // Continue — handleAnalyze surfaces the 0-frame error
+          } else {
+            const errBody = await serverRes.json().catch(() => ({} as Record<string, unknown>)) as { error?: string };
+            console.warn(`[viralyze:prepare] server FFmpeg HTTP ${serverRes.status}: ${errBody.error ?? ''} (${elapsed()})`);
+            setPrepWarning('עיבוד הסרטון בשרת נכשל. נסה קובץ MP4 קטן יותר.');
           }
+        } catch (serverErr) {
+          const errMsg = serverErr instanceof Error ? serverErr.message : String(serverErr);
+          console.warn(`[viralyze:prepare] server fallback failed: ${errMsg} (${elapsed()})`);
+          if (!timedOut) {
+            setPrepWarning('לא ניתן לחלץ פריימים מהסרטון. נסה להמיר לפורמט MP4 ולשלוח מחדש.');
+          }
+        } finally {
+          clearInterval(progressTimer);
         }
       }
       // ─────────────────────────────────────────────────────────────────────
