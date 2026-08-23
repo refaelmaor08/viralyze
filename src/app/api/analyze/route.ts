@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeVideo, analyzeViralPotential } from '@/lib/aiProvider';
+import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, analyzePerceptionGap } from '@/lib/aiProvider';
 import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData } from '@/types';
 
 export const maxDuration = 120;
@@ -79,11 +79,69 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const [result, viralAnalysis] = await Promise.all([
+    // ── Stage 1: main analysis + viral + content understanding (all parallel) ───
+    const [result, viralAnalysis, understanding] = await Promise.all([
       analyzeVideo(frameData, context, transcriptData ?? null, ocrData ?? null),
       analyzeViralPotential(frameData, context, transcriptData ?? null),
+      understandVideo(frameData, context.language).catch((e: unknown) => {
+        console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
+        return null;
+      }),
     ]);
     result.viralAnalysis = viralAnalysis;
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // ── Stage 2: profile-specific adaptive + perception gap (both parallel) ─────
+    // Only runs when Stage 1 understanding succeeded — both calls need it.
+    let adaptiveResult = null;
+    let perceptionResult = null;
+    if (understanding) {
+      result.understanding = understanding;
+      console.log('[viralyze:understanding]', {
+        primaryType: understanding.primaryType,
+        confidence: understanding.confidence,
+        creatorIntent: understanding.creatorIntent?.slice(0, 100),
+      });
+
+      [adaptiveResult, perceptionResult] = await Promise.all([
+        analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
+          console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
+          return null;
+        }),
+        analyzePerceptionGap(frameData, context, understanding).catch((e: unknown) => {
+          console.error('[viralyze:perception] failed:', e instanceof Error ? e.message : String(e));
+          return null;
+        }),
+      ]);
+
+      if (adaptiveResult) result.adaptiveAnalysis = adaptiveResult;
+      if (perceptionResult) result.perceptionGap = perceptionResult;
+
+      console.log('[viralyze:stage2]', {
+        adaptiveProfile: adaptiveResult?.profileType ?? 'failed',
+        perceptionAlignment: perceptionResult?.alignmentScore ?? 'failed',
+      });
+    }
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // ── Track data availability in debug panel ───────────────────────────────────
+    if (result._debug) {
+      result._debug.dataQuality = {
+        hasTranscript: !!(transcriptData?.hasSpeech),
+        hasOcr: !!(ocrData?.hasText),
+        hasUnderstanding: !!understanding,
+        hasAdaptive: !!adaptiveResult,
+        hasPerceptionGap: !!perceptionResult,
+      };
+      result._debug.modulesRan = [
+        'analyzeVideo',
+        'analyzeViralPotential',
+        understanding ? 'understandVideo' : null,
+        adaptiveResult ? 'analyzeAdaptive' : null,
+        perceptionResult ? 'analyzePerceptionGap' : null,
+      ].filter(Boolean) as string[];
+    }
+    // ────────────────────────────────────────────────────────────────────────────
 
     // ── Final score log (visible in Vercel Function Logs) ───────────────────────
     console.log('[viralyze:final-scores]', JSON.stringify({
@@ -92,6 +150,7 @@ export async function POST(req: NextRequest) {
       attention: result.scores.attention,
       pacing: result.scores.pacing,
       allScores: result.scores,
+      modulesRan: result._debug?.modulesRan ?? [],
     }));
     // ────────────────────────────────────────────────────────────────────────────
 

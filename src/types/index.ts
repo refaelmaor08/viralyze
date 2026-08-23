@@ -79,6 +79,14 @@ export interface FixMyVideoSuggestion {
   type: 'cut' | 'zoom' | 'subtitle' | 'speedup' | 'music' | 'emotion' | 'transition';
 }
 
+export interface DataQuality {
+  hasTranscript: boolean;
+  hasOcr: boolean;
+  hasUnderstanding: boolean;
+  hasAdaptive: boolean;
+  hasPerceptionGap: boolean;
+}
+
 export interface DevDebugData {
   frameCount: number;
   frameTimestamps: number[];
@@ -86,6 +94,7 @@ export interface DevDebugData {
   transcriptPreview: string;
   modulesRan: string[];
   rawGptResponse: Record<string, unknown>;
+  dataQuality?: DataQuality;
 }
 
 export interface AnalysisResult {
@@ -102,6 +111,9 @@ export interface AnalysisResult {
   viralAnalysis?: ViralPotentialAnalysis;
   ocr?: OcrData;
   videoMetadata?: VideoMetadata;
+  understanding?: VideoUnderstanding;
+  adaptiveAnalysis?: AdaptiveAnalysis;
+  perceptionGap?: PerceptionGap;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────

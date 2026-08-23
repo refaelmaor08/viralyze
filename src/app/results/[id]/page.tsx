@@ -15,6 +15,8 @@ import CompetitorPanel from '@/components/results/CompetitorPanel';
 import VisualTimeline from '@/components/results/VisualTimeline';
 import ViralPotentialResult from '@/components/results/ViralPotentialResult';
 import DevPanel from '@/components/results/DevPanel';
+import AdaptiveSection from '@/components/results/AdaptiveSection';
+import PerceptionGapCard from '@/components/results/PerceptionGapCard';
 
 const IS_DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
@@ -218,9 +220,31 @@ export default function ResultsPage() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.25 }}
           >
-            {activeTab === 'scores' && <ScoreDashboard result={result} />}
+            {activeTab === 'scores' && (
+              <>
+                <ScoreDashboard result={result} />
+                {result.adaptiveAnalysis && (
+                  <div className="mt-6">
+                    <AdaptiveSection
+                      analysis={result.adaptiveAnalysis}
+                      language={context?.language || 'hebrew'}
+                    />
+                  </div>
+                )}
+              </>
+            )}
             {activeTab === 'viral' && result.viralAnalysis && <ViralPotentialResult analysis={result.viralAnalysis} />}
-            {activeTab === 'feedback' && <FeedbackPanel feedback={result.feedback} />}
+            {activeTab === 'feedback' && (
+              <>
+                {result.perceptionGap && (
+                  <PerceptionGapCard
+                    gap={result.perceptionGap}
+                    language={context?.language || 'hebrew'}
+                  />
+                )}
+                <FeedbackPanel feedback={result.feedback} />
+              </>
+            )}
             {activeTab === 'suggestions' && <SuggestionsPanel suggestions={result.suggestions} />}
             {activeTab === 'fix' && <FixMyVideo suggestions={result.fixMyVideo} />}
             {activeTab === 'timeline' && <VisualTimeline entries={result.timeline ?? []} />}
