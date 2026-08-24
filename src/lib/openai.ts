@@ -190,7 +190,7 @@ function deframeArr(arr: string[], timestamps: number[], dur: number, isHe: bool
   return arr.map((s) => deframe(s, timestamps, dur, isHe));
 }
 
-function buildTranscriptSection(t: TranscriptData | null | undefined, isHe = false, audioExtractionFailed = false): string {
+export function buildTranscriptSection(t: TranscriptData | null | undefined, isHe = false, audioExtractionFailed = false): string {
   if (!t) {
     if (audioExtractionFailed) {
       return `
@@ -443,6 +443,34 @@ visualStimulation anchors (richness and appeal of what the viewer sees):
   38 → One clear problem: poor/harsh lighting OR static identical framing in all frames
   19 → Multiple failures — dark + static + low contrast throughout
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 7 — EVIDENCE PRIMACY (mandatory fact-check before any feedback)
+Speech and OCR are ESTABLISHED EVIDENCE — equal in authority to visual frames.
+
+Before writing ANY weakness, gap, or recommendation, ask:
+"Is this information already provided in the transcript or OCR?"
+If YES → do NOT generate that criticism. It is factually wrong to claim something is missing when evidence shows it exists.
+
+SPEECH IS EVIDENCE — patterns to watch:
+▸ Relationships stated aloud: "אח שלי הגדול / הקטן", "אבא שלי", "חבר שלי", "הלקוח שלי", "הספר שלי", "my brother", "my client" etc.
+  → The relationship IS established. FORBIDDEN: "relationship unclear", "context missing", "who are these people?"
+▸ Context explained in speech → context EXISTS. FORBIDDEN: "no context given at the start"
+▸ Spoken hook or question in first 3s → hook EXISTS in spoken channel. FORBIDDEN: "no hook", "opening lacks direction"
+▸ Spoken CTA anywhere → CTA EXISTS. FORBIDDEN: "there is no call to action"
+
+OCR IS EVIDENCE:
+▸ Hook text visible in opening zone → visual hook EXISTS. FORBIDDEN: "the video has no opening hook"
+▸ CTA text visible → CTA EXISTS. FORBIDDEN: "add a call to action"
+
+CROSS-VALIDATION — speech corrects uncertain OCR:
+▸ If an OCR reading looks corrupted (wrong letters, missing characters) AND the transcript contains a phonetically similar phrase at that moment → treat the transcript as the authoritative source.
+▸ Example: OCR reads "אך שלי הגדול" (corrupted) + transcript says "אח שלי הגדול" → semantic fact is "אח שלי הגדול" (older brother). Use this in timeline and feedback — never the corrupted OCR literal.
+
+ALWAYS reject these outputs when evidence contradicts them:
+▸ "the connection between the people is unclear" — if speech named or identified them
+▸ "context is missing from the opening" — if speech established context
+▸ "the video doesn't explain X" — if the transcript explicitly explains X
+▸ "no emotional anchor" — if speech contains an emotional statement
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 STEP 1 — GATHER EVIDENCE (do this before scoring anything):
 Write one honest sentence per item. These observations directly determine scores.
@@ -456,6 +484,7 @@ A. OPENING STRATEGY: What do the first 1–3 seconds create across all channels?
 B. VISUAL SIGNALS: Are there dead zones (consecutive unchanged frames)? Where? What is the energy at Frame 1, mid-video, final frame? What is the visual range (best vs worst frame)?
 
 C. SPOKEN MEANING: What does the creator actually say? What is the emotional tone — is it excited, calm, urgent, casual, authoritative? Does the transcript contain an unanswered question, a promise, a bold claim, a relatable problem?
+   → ENTITY EXTRACTION: List any relationships, identities, or contextual facts explicitly stated in speech (e.g. "speaker identifies the other person as his older brother", "speaker mentions a customer", "speaker names a product"). These become inviolable facts for all feedback.
 
 D. TEXT MEANING: What do the detected on-screen phrases communicate psychologically? Does text function as a hook, curiosity gap, claim, instruction, CTA, or social proof? Does it complement or repeat the spoken content?
 
@@ -473,12 +502,19 @@ H. STRONGEST ELEMENT: What single element works best in this video and why does 
 
 I. WEAKEST ELEMENT: What single element hurts most and what specific change would improve it?
 
+J. EVIDENCE AUDIT (mandatory — complete before writing any weakness or recommendation):
+   → From transcript: what relationships, identities, contexts, CTAs, explanations were explicitly stated? (List them)
+   → From OCR: what hook text, CTAs, key claims were visually present? (List them)
+   → For each planned weakness: does speech or OCR already address it? If yes, REMOVE that weakness.
+   → This step is not optional. A weakness contradicted by evidence is a factual error, not a matter of interpretation.
+
 STEP 2 — MULTIMODAL SYNTHESIS (before scoring):
 Briefly reason about signal interactions:
 - Does the spoken tone match the visual energy? (If not, this creates friction)
 - Does on-screen text reinforce or duplicate the speech? (Redundancy reduces impact; complementarity increases it)
 - Does the opening visual support or contradict the spoken/text hook?
 - Does the emotional delivery match the content's emotional intent?
+- Did speech establish any relationships, identities, or context that visuals alone would not reveal? (If yes, cite this as a combined-evidence fact, not a visual ambiguity)
 
 STEP 3 — SCORE (from evidence in Steps 1–2):
 Place each score using the anchor points in RULE 6. Every score must follow from your observations — do not default to anchor values.
@@ -564,7 +600,7 @@ Return VALID JSON in this exact structure:
       "time": "<M:SS — auto-reconstructed, just provide seconds below>",
       "seconds": <number ≥ 0 and ≤ ${dur} — ABSOLUTE MAXIMUM IS ${dur}>,
       "type": "<strong|warning|critical>",
-      "text": "<one specific sentence about what happens at this moment and its impact>"
+      "text": "<one sentence describing MEANING — combine speech + visual + text into one semantic interpretation. NEVER paste raw OCR text literally (e.g. do NOT write 'text X appears on screen'). Instead describe what it means: 'The speaker introduces his older brother, establishing the relationship with the other person.' For persistent on-screen text that spans multiple frames, report it ONCE at its first appearance — do not repeat it as separate timeline events every few seconds.>"
     }
   ],
   "executiveSummary": "<3–4 sentences that answer: What is this video? What does it do well? What hurts it most? What should the creator change first? Base this entirely on the evidence gathered.>",
@@ -576,6 +612,8 @@ Timeline rules:
 - EVERY seconds value must be ≤ ${dur} — this is enforced server-side and any value > ${dur} will be dropped
 - Use frame positions as anchor points, not invented timestamps
 - Each entry should reflect a real observable shift in the content
+- Describe MEANING not raw text: "Speaker establishes older-brother relationship" not "text 'אח שלי הגדול' appears on screen"
+- Persistent on-screen text: ONE entry at its first appearance — do not repeat it across frames as separate events
 
 FEEDBACK QUALITY RULES:
 - NEVER write generic advice: "improve your hook", "add a CTA", "increase energy", "improve pacing"
@@ -583,6 +621,7 @@ FEEDBACK QUALITY RULES:
 - ALWAYS explain the viewer psychology: why does this specific observation help or hurt engagement
 - For immediateChanges: if you have enough content evidence, provide a rewritten example (e.g. "Instead of opening with X, try: [actual rewrite]")
 - Accuracy over impressiveness — if evidence is thin, use "may", "appears to", "could"
+- EVIDENCE CHECK (mandatory): For every weakness you write, verify it is NOT already addressed by transcript or OCR. Speech naming a person = identity established. Speech explaining context = context established. OCR showing a CTA = CTA exists. Claiming something is missing when evidence proves it is present is a factual error.
 
 Be honest. Use evidence from frames, transcript, and OCR. Never invent quotes, timestamps, or scenes. Never mention a time beyond ${dur}s.`;
 }

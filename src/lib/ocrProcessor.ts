@@ -61,7 +61,7 @@ interface RawFrameText {
   confidence: number;
 }
 
-function mergeIntoSegments(rawTexts: RawFrameText[]): OcrSegment[] {
+export function mergeIntoSegments(rawTexts: RawFrameText[]): OcrSegment[] {
   if (rawTexts.length === 0) return [];
 
   // Sort by timestamp then confidence
@@ -304,13 +304,17 @@ export function buildOcrSection(ocr: OcrData, duration: number, isHe: boolean): 
 ▸ השווה בין הטקסט הנראה לבין מה שנאמר: האם הם מחזקים אחד את השני (כוח כפול) או שחוזרים על אותו דבר (בזבוז)?
 ▸ אם טקסט הפתיחה חזק — ציין אותו כגורם מרכזי בחוזק ה-Hook (hookStrength).
 ▸ אם טקסט נוסף מידע שלא נאמר בפה — ציין זאת. אם הוא רק חוזר — ציין שזה כפילות.
-▸ אל תיצור בעיות כתוביות שלא קיימות. אל תטען שהטקסט קטן/קשה לקריאה אלא אם confidence < 0.7.`
+▸ אל תיצור בעיות כתוביות שלא קיימות. אל תטען שהטקסט קטן/קשה לקריאה אלא אם confidence < 0.7.
+▸ קרוס-ולידציה: אם טקסט OCR נראה פגום ובתמליל יש דיבור פונטית דומה באותו זמן — השתמש בתמליל כגרסה המוסמכת.
+▸ טקסט קבוע: אם אותו טקסט מופיע בפריימים רבים (כיתוב קבוע), דווח עליו פעם אחת בהופעה הראשונה בלבד.`
     : `\nOCR INTERPRETATION INSTRUCTIONS — mandatory:
 ▸ Don't just list the text — understand what it DOES. Does the opening text create curiosity? Make a promise? Pose a question? Make a bold claim? Is it a CTA?
 ▸ Compare text with speech: do they reinforce each other (multiplied impact) or repeat the same thing (wasted opportunity)?
 ▸ If opening-zone text is strong — credit it as a major factor in hookStrength.
 ▸ If text adds information NOT spoken — note this as complementary value. If it only repeats speech — note this as redundancy.
-▸ Never invent text-quality problems. Never claim text is unreadable unless confidence < 0.7.`;
+▸ Never invent text-quality problems. Never claim text is unreadable unless confidence < 0.7.
+▸ CROSS-VALIDATION: If OCR text appears corrupted or garbled AND the transcript contains phonetically similar speech at the same timestamp, treat the transcript as authoritative and use the transcript's version as the actual content.
+▸ PERSISTENT TEXT: If the same text appears across many frames (persistent overlay/caption), report it ONCE at its first appearance — do NOT generate separate timeline events for each repeated frame.`;
 
   return `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
