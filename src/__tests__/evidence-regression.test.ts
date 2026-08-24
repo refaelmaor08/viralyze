@@ -13,8 +13,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildTranscriptSection } from '../lib/openai';
+import { applyCorrections } from '../lib/transcriptValidator';
 import { mergeIntoSegments, buildOcrSection, normalizeOcrWithTranscript } from '../lib/ocrProcessor';
-import type { TranscriptData, OcrData } from '../types';
+import type { TranscriptData, OcrData, TranscriptCorrection } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -400,5 +401,155 @@ describe('OCR-F — Speech agreement boosts OCR confidence', () => {
     const section = buildOcrSection(ocr, 30, false);
     expect(section).not.toContain('"פגם בשנ"');
     expect(section).toContain('do NOT quote');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRANS-A through TRANS-D: Hebrew transcript validation regression tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── TRANS-A: applyCorrections corrects hitpa'el ת-dropout ───────────────────
+
+describe('TRANS-A — מסדרים STT error correction (applyCorrections)', () => {
+  it('replaces מסדרים with מסתדרים when high-confidence correction given', () => {
+    const result = applyCorrections('איך זה שאתם מסדרים כל כך טוב?', [
+      { original: 'מסדרים', corrected: 'מסתדרים', confidence: 'high', reason: "hitpa'el ת dropout" },
+    ]);
+    expect(result).toBe('איך זה שאתם מסתדרים כל כך טוב?');
+  });
+
+  it('does NOT apply medium-confidence corrections', () => {
+    const raw = 'איך זה שאתם מסדרים כל כך טוב?';
+    const result = applyCorrections(raw, [
+      { original: 'מסדרים', corrected: 'מסתדרים', confidence: 'medium', reason: 'uncertain' },
+    ]);
+    expect(result).toBe(raw);
+  });
+
+  it('does not touch correct text with empty corrections list', () => {
+    const text = 'הוא האח הגדול שלי';
+    expect(applyCorrections(text, [])).toBe(text);
+  });
+
+  it('corrects word at start of string', () => {
+    const result = applyCorrections('מסדרים ביחד', [
+      { original: 'מסדרים', corrected: 'מסתדרים', confidence: 'high', reason: 'test' },
+    ]);
+    expect(result).toBe('מסתדרים ביחד');
+  });
+
+  it('corrects word at end of string', () => {
+    const result = applyCorrections('הם מסדרים', [
+      { original: 'מסדרים', corrected: 'מסתדרים', confidence: 'high', reason: 'test' },
+    ]);
+    expect(result).toBe('הם מסתדרים');
+  });
+});
+
+// ─── TRANS-B: rawTranscript preserved separately from validated transcript ────
+
+describe('TRANS-B — rawTranscript preserved separately from validated transcript', () => {
+  it('rawTranscript holds original STT output while transcript holds correction', () => {
+    const raw = 'איך זה שאתם מסדרים כל כך טוב?';
+    const correction: TranscriptCorrection = {
+      original: 'מסדרים',
+      corrected: 'מסתדרים',
+      confidence: 'high',
+      reason: "hitpa'el",
+    };
+    const validated: TranscriptData = {
+      ...makeTranscript({ transcript: raw }),
+      rawTranscript: raw,
+      transcript: applyCorrections(raw, [correction]),
+      transcriptValidated: true,
+      validationLog: [correction],
+    };
+    expect(validated.rawTranscript).toContain('מסדרים');
+    expect(validated.transcript).toContain('מסתדרים');
+    expect(validated.transcript).not.toContain('מסדרים');
+  });
+
+  it('buildTranscriptSection uses corrected transcript not rawTranscript', () => {
+    const validated: TranscriptData = {
+      ...makeTranscript({ transcript: 'איך זה שאתם מסתדרים כל כך טוב?' }),
+      rawTranscript: 'איך זה שאתם מסדרים כל כך טוב?',
+      transcriptValidated: true,
+      validationLog: [{ original: 'מסדרים', corrected: 'מסתדרים', confidence: 'high', reason: "hitpa'el" }],
+    };
+    const section = buildTranscriptSection(validated, true);
+    expect(section).toContain('מסתדרים');
+    // The raw wrong word must not appear as a quoted transcript string
+    expect(section).not.toContain('"מסדרים"');
+  });
+
+  it('buildTranscriptSection shows validation note when corrections were applied', () => {
+    const validated: TranscriptData = {
+      ...makeTranscript({ transcript: 'מסתדרים' }),
+      rawTranscript: 'מסדרים',
+      transcriptValidated: true,
+      validationLog: [{ original: 'מסדרים', corrected: 'מסתדרים', confidence: 'high', reason: '' }],
+    };
+    const section = buildTranscriptSection(validated, true);
+    // Should mention validation and/or corrections in the header
+    expect(section).toMatch(/validated|correction|אומת/i);
+  });
+
+  it('buildTranscriptSection shows no correction note when transcriptValidated but zero corrections', () => {
+    const validated: TranscriptData = {
+      ...makeTranscript({ transcript: 'הכל בסדר' }),
+      transcriptValidated: true,
+      validationLog: [],
+    };
+    const section = buildTranscriptSection(validated, true);
+    expect(section).toContain('Hebrew-validated');
+    expect(section).not.toContain('correction(s) applied');
+  });
+});
+
+// ─── TRANS-C: Transcript validator module structure ───────────────────────────
+
+describe('TRANS-C — Transcript validator module structure', () => {
+  it('exports applyCorrections as a pure function', async () => {
+    const { applyCorrections: fn } = await import('../lib/transcriptValidator');
+    expect(typeof fn).toBe('function');
+  });
+
+  it('exports validateHebrewTranscript', async () => {
+    const { validateHebrewTranscript: fn } = await import('../lib/transcriptValidator');
+    expect(typeof fn).toBe('function');
+  });
+
+  it('TranscriptData type supports rawTranscript, transcriptValidated, validationLog', () => {
+    const t: TranscriptData = {
+      ...makeTranscript({ transcript: 'מסתדרים' }),
+      rawTranscript: 'מסדרים',
+      transcriptValidated: true,
+      validationLog: [],
+    };
+    expect(t.rawTranscript).toBe('מסדרים');
+    expect(t.transcriptValidated).toBe(true);
+    expect(Array.isArray(t.validationLog)).toBe(true);
+  });
+});
+
+// ─── TRANS-D: Semantic guarantee: corrected transcript reaches analysis ────────
+
+describe('TRANS-D — Semantic guarantee: corrected transcript reaches analysis', () => {
+  it('buildTranscriptSection with מסתדרים contains the correct word', () => {
+    const t = makeTranscript({ transcript: 'איך זה שאתם מסתדרים כל כך טוב?' });
+    const section = buildTranscriptSection(t, true);
+    expect(section).toContain('מסתדרים');
+    expect(section).not.toContain('מסדרים');
+  });
+
+  it('applyCorrections does not create false positives for correct Hebrew', () => {
+    const text = 'הוא מסתדר מצוין עם כולם';
+    expect(applyCorrections(text, [])).toBe(text);
+  });
+
+  it('SPEECH QUOTING RULE is present in buildTranscriptSection output', () => {
+    const t = makeTranscript({ transcript: 'שלום' });
+    const section = buildTranscriptSection(t, true);
+    expect(section).toContain('SPEECH QUOTING RULE');
   });
 });

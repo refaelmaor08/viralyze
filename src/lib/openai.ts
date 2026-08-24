@@ -242,11 +242,18 @@ Whisper speech recognition confirmed: this video contains no spoken words — it
     ? `"${t.ctaWords}" — spoken CTA present`
     : 'no speech in final section — CTA relies on visual or is absent';
 
+  const validationHeader = t.transcriptValidated
+    ? ` — Hebrew-validated ✓${t.validationLog?.length ? `, ${t.validationLog.length} correction(s) applied` : ''}`
+    : ' — treat as authoritative';
+  const correctionsLine = t.validationLog?.length
+    ? `- STT corrections applied: ${t.validationLog.map((c) => `${c.original} → ${c.corrected}`).join(', ')}\n`
+    : '';
+
   return `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TRANSCRIPT DATA (Whisper speech recognition — treat as authoritative):
+TRANSCRIPT DATA (Whisper STT${validationHeader}):
 - Language detected: ${t.language}
-- Full transcript: "${t.transcript.slice(0, 1000)}${t.transcript.length > 1000 ? '…' : ''}"
+${correctionsLine}- Full transcript: "${t.transcript.slice(0, 1000)}${t.transcript.length > 1000 ? '…' : ''}"
 - First 3s speech (opening zone): "${t.hookWords || 'NO SPEECH in first 3 seconds'}"
 - Final 20% speech (CTA zone): ${ctaNote}
 - Speaking speed: ${t.speakingSpeedWpm} WPM — ${wpmNote}
@@ -262,6 +269,7 @@ SPOKEN CONTENT INSTRUCTIONS — mandatory:
 ▸ Is there a clear reason given to the viewer to take any action? What is it?
 ▸ If no CTA words detected: note "${isHe ? 'אין קריאה לפעולה ברורה' : 'no clear spoken CTA'}" in weaknesses.
 ▸ Speaking speed ${t.speakingSpeedWpm} WPM must inform pacing score — do not contradict measured delivery.
+▸ SPEECH QUOTING RULE: Describe spoken content by its MEANING — do not copy transcript phrases verbatim into timeline events or feedback. Paraphrase rather than quote. Only use quotation marks around spoken words if you are certain the phrasing is completely natural Hebrew. When uncertain: describe what was MEANT, not what was said.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 

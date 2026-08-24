@@ -72,10 +72,34 @@ export async function POST(req: NextRequest) {
     }));
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ── OCR transcript cross-validation (both available here) ───────────────────
+    // ── Step 1: Hebrew transcript validation (runs before OCR cross-validation) ──
+    // Corrects likely Whisper STT phonetic errors (e.g. hitpa'el ת-dropout:
+    // מסדרים → מסתדרים) using GPT-4o-mini before any downstream analysis sees
+    // the transcript. rawTranscript is preserved; only HIGH-confidence corrections
+    // are applied. Non-fatal: if this fails, analysis continues with raw Whisper output.
+    let finalTranscriptData = transcriptData ?? null;
+    if (finalTranscriptData?.hasSpeech && context.language === 'hebrew') {
+      try {
+        const { validateHebrewTranscript } = await import('@/lib/transcriptValidator');
+        finalTranscriptData = await validateHebrewTranscript(finalTranscriptData, ocrData ?? null);
+        const corrections = finalTranscriptData.validationLog?.length ?? 0;
+        console.log('[viralyze:analyze] transcript validation', {
+          validated: finalTranscriptData.transcriptValidated,
+          corrections,
+          ...(corrections > 0 ? {
+            changes: finalTranscriptData.validationLog?.map((c) => `${c.original}→${c.corrected}`),
+          } : {}),
+        });
+      } catch (e: unknown) {
+        console.warn('[viralyze:transcript-validator] failed — using raw Whisper output:', e instanceof Error ? e.message : String(e));
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // ── Step 2: OCR transcript cross-validation (uses validated transcript) ─────
     let finalOcrData = ocrData ?? null;
-    if (finalOcrData?.hasText && transcriptData?.hasSpeech) {
-      finalOcrData = normalizeOcrWithTranscript(finalOcrData, transcriptData);
+    if (finalOcrData?.hasText && finalTranscriptData?.hasSpeech) {
+      finalOcrData = normalizeOcrWithTranscript(finalOcrData, finalTranscriptData);
       console.log('[viralyze:analyze] ocr cross-validated with transcript', {
         segments: finalOcrData.segments.length,
         speechValidated: finalOcrData.segments.filter((s) => s.evidenceSources?.includes('speech')).length,
@@ -93,7 +117,7 @@ export async function POST(req: NextRequest) {
     // analyzeVideo uses all frames (first 3 high detail) as the primary quality signal.
     const stage1Start = Date.now();
     const [result, understanding] = await Promise.all([
-      analyzeVideo(frameData, context, transcriptData ?? null, finalOcrData, audioExtractionFailed ?? false),
+      analyzeVideo(frameData, context, finalTranscriptData, finalOcrData, audioExtractionFailed ?? false),
       understandVideo(frameData, context.language).catch((e: unknown) => {
         console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
         return null;
@@ -125,14 +149,14 @@ export async function POST(req: NextRequest) {
 
     if (understanding) {
       [viralAnalysis, adaptiveResult] = await Promise.all([
-        analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false, understanding),
+        analyzeViralPotential(frameData, context, finalTranscriptData, audioExtractionFailed ?? false, understanding),
         analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
           console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
           return null;
         }),
       ]);
     } else {
-      viralAnalysis = await analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false, null);
+      viralAnalysis = await analyzeViralPotential(frameData, context, finalTranscriptData, audioExtractionFailed ?? false, null);
     }
 
     console.log('[viralyze:stage2]', {
@@ -192,7 +216,9 @@ export async function POST(req: NextRequest) {
         understandFrames,
         viralModeTextOnly: !!understanding,
         estImageTokens,
-        whisperLanguage: transcriptData?.language ?? null,
+        whisperLanguage: finalTranscriptData?.language ?? null,
+        transcriptValidated: finalTranscriptData?.transcriptValidated ?? false,
+        transcriptCorrections: finalTranscriptData?.validationLog?.length ?? 0,
       },
     }));
     // ────────────────────────────────────────────────────────────────────────────

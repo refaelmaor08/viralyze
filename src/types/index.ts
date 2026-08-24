@@ -433,8 +433,18 @@ export interface SilencePeriod {
   end: number;
 }
 
+export interface TranscriptCorrection {
+  original: string;
+  corrected: string;
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+}
+
 export interface TranscriptData {
-  transcript: string;
+  transcript: string;              // validated transcript (= rawTranscript when no corrections applied)
+  rawTranscript?: string;          // original Whisper STT output — never overwritten after set
+  transcriptValidated?: boolean;   // true once the Hebrew validator has run (even if no corrections)
+  validationLog?: TranscriptCorrection[];  // audit trail of applied corrections
   language: string;
   words: TranscriptWord[];
   silencePeriods: SilencePeriod[];
