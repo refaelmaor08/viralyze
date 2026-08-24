@@ -51,10 +51,16 @@ function positionIcon(pos: string) {
 }
 
 function SegmentCard({ seg, lang }: { seg: OcrSegment; lang: string }) {
-  const rtl = isHebrew(seg.text);
+  const displayText = seg.normalizedText ?? seg.text;
+  const rtl = isHebrew(displayText);
   const cat = categoryLabel(seg.category, lang);
   const timeStr = naturalTimeRange(seg.startTime, seg.endTime);
   const isHe = lang === 'hebrew';
+  const conf = seg.normalizedConfidence;
+  const speechValidated = seg.evidenceSources?.includes('speech') ?? false;
+
+  const textOpacity = conf === 'low' ? 'text-white/40' : conf === 'medium' ? 'text-white/70' : 'text-white';
+  const prefix = conf === 'medium' ? '~' : '';
 
   return (
     <motion.div
@@ -64,11 +70,11 @@ function SegmentCard({ seg, lang }: { seg: OcrSegment; lang: string }) {
     >
       {/* Text */}
       <p
-        className="text-white text-sm leading-relaxed"
+        className={`text-sm leading-relaxed ${textOpacity}`}
         dir={rtl ? 'rtl' : 'ltr'}
-        style={{ fontFamily: rtl ? 'inherit' : 'inherit', textAlign: rtl ? 'right' : 'left' }}
+        style={{ textAlign: rtl ? 'right' : 'left' }}
       >
-        {seg.text}
+        {prefix}{displayText}
       </p>
 
       {/* Meta row */}
@@ -94,10 +100,19 @@ function SegmentCard({ seg, lang }: { seg: OcrSegment; lang: string }) {
           </span>
         )}
 
-        {/* Confidence */}
-        {seg.confidence < 0.75 && (
+        {/* Speech-validated badge */}
+        {speechValidated && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-[rgba(34,197,94,0.1)] text-green-400 border border-green-500/20">
+            {isHe ? '✓ אומת בדיבור' : '✓ speech'}
+          </span>
+        )}
+
+        {/* Confidence level */}
+        {conf && conf !== 'high' && (
           <span className="text-[10px] text-white/25 ml-auto">
-            {isHe ? `ביטחון: ${Math.round(seg.confidence * 100)}%` : `${Math.round(seg.confidence * 100)}% conf`}
+            {isHe
+              ? (conf === 'medium' ? 'ביטחון בינוני' : 'ביטחון נמוך')
+              : (conf === 'medium' ? 'medium confidence' : 'low confidence')}
           </span>
         )}
       </div>

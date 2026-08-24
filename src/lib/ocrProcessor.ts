@@ -22,6 +22,77 @@ function textSimilarity(a: string, b: string): number {
   return shared / Math.max(wa.size, wb.size);
 }
 
+
+// ─── Temporal consensus ───────────────────────────────────────────────────────
+
+interface ReadingCandidate {
+  text: string;
+  confidence: number;
+}
+
+function selectConsensusText(candidates: ReadingCandidate[]): {
+  consensusText: string;
+  rawText: string;
+  allReadings: string[];
+  normalizedConfidence: 'high' | 'medium' | 'low';
+} {
+  const unique = [...new Set(candidates.map((c) => c.text.trim()))].filter(Boolean);
+  const best = candidates.reduce((a, b) => (a.confidence >= b.confidence ? a : b));
+  const rawText = best.text.trim();
+
+  if (unique.length === 1 || candidates.length === 1) {
+    const conf = best.confidence;
+    return {
+      consensusText: rawText,
+      rawText,
+      allReadings: unique,
+      normalizedConfidence: conf >= 0.85 ? 'high' : conf >= 0.65 ? 'medium' : 'low',
+    };
+  }
+
+  // Word-position majority vote
+  const wordLists = candidates.map((c) => c.text.trim().split(/\s+/).filter(Boolean));
+  const maxLen = Math.max(...wordLists.map((wl) => wl.length));
+  const consensusWords: string[] = [];
+  let totalAgreement = 0;
+  let posCount = 0;
+
+  for (let i = 0; i < maxLen; i++) {
+    const atPos = wordLists.map((wl) => wl[i] ?? null).filter((w): w is string => w !== null);
+    if (atPos.length === 0) continue;
+    posCount++;
+
+    const freq = new Map<string, number>();
+    for (const w of atPos) freq.set(w, (freq.get(w) || 0) + 1);
+
+    // Sort by frequency desc, then prefer word from highest-confidence reading as tiebreaker
+    const sorted = [...freq.entries()].sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      // tiebreak: pick word that appeared in highest-confidence candidate
+      const confA = candidates.filter((c) => (c.text.trim().split(/\s+/)[i] ?? '') === a[0])
+        .reduce((mx, c) => Math.max(mx, c.confidence), 0);
+      const confB = candidates.filter((c) => (c.text.trim().split(/\s+/)[i] ?? '') === b[0])
+        .reduce((mx, c) => Math.max(mx, c.confidence), 0);
+      return confB - confA;
+    });
+
+    const [bestWord, bestCount] = sorted[0];
+    consensusWords.push(bestWord);
+    totalAgreement += bestCount / atPos.length;
+  }
+
+  const avgAgreement = posCount > 0 ? totalAgreement / posCount : 0;
+  const normalizedConfidence: 'high' | 'medium' | 'low' =
+    avgAgreement >= 0.85 ? 'high' : avgAgreement >= 0.6 ? 'medium' : 'low';
+
+  return {
+    consensusText: consensusWords.join(' '),
+    rawText,
+    allReadings: unique,
+    normalizedConfidence,
+  };
+}
+
 // ─── Text detection helpers ───────────────────────────────────────────────────
 
 function detectTextLanguage(text: string): OcrSegment['textLanguage'] {
@@ -64,44 +135,146 @@ interface RawFrameText {
 export function mergeIntoSegments(rawTexts: RawFrameText[]): OcrSegment[] {
   if (rawTexts.length === 0) return [];
 
-  // Sort by timestamp then confidence
+  // ── Phase 1: group into temporal clusters ──────────────────────────────────
   const sorted = [...rawTexts].sort((a, b) => a.timestamp - b.timestamp || b.confidence - a.confidence);
-  const segments: OcrSegment[] = [];
+
+  interface Cluster {
+    position: OcrTextPosition;
+    startTime: number;
+    endTime: number;
+    frameOccurrences: number;
+    readings: ReadingCandidate[];
+  }
+
+  const clusters: Cluster[] = [];
 
   for (const item of sorted) {
-    // Try to find an open segment this item belongs to
     let merged = false;
-    for (const seg of segments) {
-      // Only merge into "recent" segments (within 2 seconds)
-      if (item.timestamp - seg.endTime > 2.0) continue;
-      // Check if same position and similar text
-      if (seg.position !== item.position) continue;
-      const sim = textSimilarity(seg.text, item.text);
-      if (sim >= 0.6) {
-        // Extend segment — keep longer/more complete text
-        seg.text = seg.text.length >= item.text.length ? seg.text : item.text;
-        seg.endTime = Math.max(seg.endTime, item.timestamp);
-        seg.frameOccurrences++;
-        seg.confidence = Math.max(seg.confidence, item.confidence);
+    for (const cl of clusters) {
+      if (item.timestamp - cl.endTime > 2.0) continue;
+      if (cl.position !== item.position) continue;
+      // Match against any reading already in the cluster — important for
+      // cases where the first/best reading is corrupted but another frame's
+      // reading is close to the incoming text.
+      const maxSim = Math.max(...cl.readings.map((r) => textSimilarity(r.text, item.text)));
+      if (maxSim >= 0.6) {
+        cl.endTime = Math.max(cl.endTime, item.timestamp);
+        cl.frameOccurrences++;
+        cl.readings.push({ text: item.text, confidence: item.confidence });
         merged = true;
         break;
       }
     }
     if (!merged) {
-      segments.push({
-        text: item.text,
+      clusters.push({
+        position: item.position,
         startTime: item.timestamp,
         endTime: item.timestamp,
-        confidence: item.confidence,
-        position: item.position,
         frameOccurrences: 1,
-        category: classifyText(item.text),
-        textLanguage: detectTextLanguage(item.text),
+        readings: [{ text: item.text, confidence: item.confidence }],
       });
     }
   }
 
-  return segments.sort((a, b) => a.startTime - b.startTime);
+  // ── Phase 2: select consensus text for each cluster ────────────────────────
+  return clusters
+    .map((cl): OcrSegment => {
+      const { consensusText, rawText, allReadings, normalizedConfidence } =
+        selectConsensusText(cl.readings);
+      return {
+        text: consensusText,
+        rawText,
+        normalizedText: consensusText,
+        normalizedConfidence,
+        evidenceSources: ['ocr'],
+        allReadings,
+        startTime: cl.startTime,
+        endTime: cl.endTime,
+        confidence: Math.max(...cl.readings.map((r) => r.confidence)),
+        position: cl.position,
+        frameOccurrences: cl.frameOccurrences,
+        category: classifyText(consensusText),
+        textLanguage: detectTextLanguage(consensusText),
+      };
+    })
+    .sort((a, b) => a.startTime - b.startTime);
+}
+
+// ─── Transcript cross-validation ────────────────────────────────────────────
+
+function findBestTranscriptMatch(
+  segText: string,
+  transcriptWords: string[],
+): { match: string; similarity: number } | null {
+  const segWords = segText.trim().split(/s+/).filter(Boolean);
+  const n = segWords.length;
+  if (n === 0 || transcriptWords.length < n) return null;
+
+  let bestSim = 0;
+  let bestMatch = '';
+
+  // Try window sizes n-1 to n+2 to accommodate prefix words in speech
+  for (let winSize = Math.max(1, n - 1); winSize <= Math.min(n + 2, transcriptWords.length); winSize++) {
+    for (let start = 0; start <= transcriptWords.length - winSize; start++) {
+      const window = transcriptWords.slice(start, start + winSize).join(' ');
+      const sim = textSimilarity(segText, window);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestMatch = window;
+      }
+    }
+  }
+
+  return bestSim >= 0.6 ? { match: bestMatch, similarity: bestSim } : null;
+}
+
+export function normalizeOcrWithTranscript(
+  ocrData: OcrData,
+  transcriptData: { hasSpeech: boolean; transcript: string } | null | undefined,
+): OcrData {
+  if (!transcriptData?.hasSpeech || !transcriptData.transcript || !ocrData.hasText) {
+    return ocrData;
+  }
+
+  const transcriptWords = transcriptData.transcript.split(/s+/).filter(Boolean);
+
+  const updatedSegments = ocrData.segments.map((seg): OcrSegment => {
+    const searchText = seg.normalizedText ?? seg.text;
+    const match = findBestTranscriptMatch(searchText, transcriptWords);
+    if (!match) return seg;
+
+    const hasSpeechSource = seg.evidenceSources?.includes('speech') ?? false;
+    const sources: ('ocr' | 'speech')[] = hasSpeechSource
+      ? (seg.evidenceSources ?? ['ocr'])
+      : [...(seg.evidenceSources ?? ['ocr']), 'speech'];
+
+    if (match.similarity >= 0.85) {
+      // Very high match — use transcript's wording (corrects OCR corruption)
+      return {
+        ...seg,
+        normalizedText: match.match,
+        text: match.match,
+        normalizedConfidence: 'high',
+        evidenceSources: sources,
+      };
+    }
+
+    // Moderate match — keep OCR consensus wording, upgrade confidence
+    return {
+      ...seg,
+      normalizedConfidence: 'high',
+      evidenceSources: sources,
+    };
+  });
+
+  // Rebuild derived arrays from updated segments
+  const allText = [...new Set(updatedSegments.map((s) => s.text))];
+  const hookText = updatedSegments
+    .filter((s) => s.startTime <= 3.0)
+    .map((s) => s.text)
+    .filter((t, i, arr) => arr.indexOf(t) === i);
+
+  return { ...ocrData, segments: updatedSegments as OcrSegment[], allText, hookText };
 }
 
 // ─── GPT-4o OCR extraction ────────────────────────────────────────────────────
@@ -289,7 +462,16 @@ export function buildOcrSection(ocr: OcrData, duration: number, isHe: boolean): 
     const catStr = seg.category ? ` [${seg.category}]` : '';
     const langStr = seg.textLanguage && seg.textLanguage !== 'unknown' ? ` (${seg.textLanguage})` : '';
     const posStr = ` @ ${seg.position}`;
-    return `  • "${seg.text}" — ${timeStr}${posStr}${catStr}${langStr}`;
+    const speechTag = seg.evidenceSources?.includes('speech') ? ' ✓speech' : '';
+    const displayText = seg.normalizedText ?? seg.text;
+    const conf = seg.normalizedConfidence;
+    if (conf === 'low') {
+      return `  • [text detected but unclear — describe function/meaning, do NOT quote] — ${timeStr}${posStr}${catStr}${langStr}`;
+    }
+    if (conf === 'medium') {
+      return `  • ~"${displayText}" — ${timeStr}${posStr}${catStr}${langStr} [medium confidence — do NOT quote verbatim; describe the meaning instead]`;
+    }
+    return `  • "${displayText}" — ${timeStr}${posStr}${catStr}${langStr}${speechTag}`;
   }).join('\n');
 
   const hookNote = ocr.hookText.length > 0

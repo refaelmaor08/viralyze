@@ -361,7 +361,12 @@ export type OcrTextCategory =
   | 'other';
 
 export interface OcrSegment {
-  text: string;
+  text: string;                   // display text (= normalizedText when available)
+  rawText?: string;               // highest-confidence single GPT reading — never overwritten
+  normalizedText?: string;        // temporal consensus + optional speech cross-validation
+  normalizedConfidence?: 'high' | 'medium' | 'low';
+  evidenceSources?: ('ocr' | 'speech')[];
+  allReadings?: string[];         // all unique raw readings for this segment (auditable)
   startTime: number;
   endTime: number;
   confidence: number;

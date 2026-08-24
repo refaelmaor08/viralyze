@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive } from '@/lib/aiProvider';
+import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
 import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData } from '@/types';
 
 export const maxDuration = 120;
@@ -71,17 +72,25 @@ export async function POST(req: NextRequest) {
     }));
     // ────────────────────────────────────────────────────────────────────────────
 
-    if (ocrData) {
-      console.log('[viralyze:analyze] ocrData received', {
-        hasText: ocrData.hasText,
-        segments: ocrData.segments?.length ?? 0,
-        allTextCount: ocrData.allText?.length ?? 0,
+    // ── OCR transcript cross-validation (both available here) ───────────────────
+    let finalOcrData = ocrData ?? null;
+    if (finalOcrData?.hasText && transcriptData?.hasSpeech) {
+      finalOcrData = normalizeOcrWithTranscript(finalOcrData, transcriptData);
+      console.log('[viralyze:analyze] ocr cross-validated with transcript', {
+        segments: finalOcrData.segments.length,
+        speechValidated: finalOcrData.segments.filter((s) => s.evidenceSources?.includes('speech')).length,
+      });
+    } else if (finalOcrData) {
+      console.log('[viralyze:analyze] ocrData received (no transcript cross-validation)', {
+        hasText: finalOcrData.hasText,
+        segments: finalOcrData.segments?.length ?? 0,
       });
     }
+    // ────────────────────────────────────────────────────────────────────────────
 
     // ── Stage 1: main analysis + viral + content understanding (all parallel) ───
     const [result, viralAnalysis, understanding] = await Promise.all([
-      analyzeVideo(frameData, context, transcriptData ?? null, ocrData ?? null, audioExtractionFailed ?? false),
+      analyzeVideo(frameData, context, transcriptData ?? null, finalOcrData, audioExtractionFailed ?? false),
       analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false),
       understandVideo(frameData, context.language).catch((e: unknown) => {
         console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
