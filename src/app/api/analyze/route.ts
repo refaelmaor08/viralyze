@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, analyzePerceptionGap } from '@/lib/aiProvider';
+import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive } from '@/lib/aiProvider';
 import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData } from '@/types';
 
 export const maxDuration = 120;
@@ -16,14 +16,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null; ocrData?: OcrData | null };
+    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null; ocrData?: OcrData | null; audioExtractionFailed?: boolean };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { frameData, context, transcriptData, ocrData } = body;
+    const { frameData, context, transcriptData, ocrData, audioExtractionFailed } = body;
 
     // ── Analysis payload audit log ──────────────────────────────────────────
     console.log('[viralyze:analyze] payload', JSON.stringify({
@@ -81,8 +81,8 @@ export async function POST(req: NextRequest) {
 
     // ── Stage 1: main analysis + viral + content understanding (all parallel) ───
     const [result, viralAnalysis, understanding] = await Promise.all([
-      analyzeVideo(frameData, context, transcriptData ?? null, ocrData ?? null),
-      analyzeViralPotential(frameData, context, transcriptData ?? null),
+      analyzeVideo(frameData, context, transcriptData ?? null, ocrData ?? null, audioExtractionFailed ?? false),
+      analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false),
       understandVideo(frameData, context.language).catch((e: unknown) => {
         console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
         return null;
@@ -91,10 +91,9 @@ export async function POST(req: NextRequest) {
     result.viralAnalysis = viralAnalysis;
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ── Stage 2: profile-specific adaptive + perception gap (both parallel) ─────
-    // Only runs when Stage 1 understanding succeeded — both calls need it.
+    // ── Stage 2: profile-specific adaptive analysis ──────────────────────────────
+    // Only runs when Stage 1 understanding succeeded.
     let adaptiveResult = null;
-    let perceptionResult = null;
     if (understanding) {
       result.understanding = understanding;
       console.log('[viralyze:understanding]', {
@@ -103,23 +102,15 @@ export async function POST(req: NextRequest) {
         creatorIntent: understanding.creatorIntent?.slice(0, 100),
       });
 
-      [adaptiveResult, perceptionResult] = await Promise.all([
-        analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
-          console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
-          return null;
-        }),
-        analyzePerceptionGap(frameData, context, understanding).catch((e: unknown) => {
-          console.error('[viralyze:perception] failed:', e instanceof Error ? e.message : String(e));
-          return null;
-        }),
-      ]);
+      adaptiveResult = await analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
+        console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
+        return null;
+      });
 
       if (adaptiveResult) result.adaptiveAnalysis = adaptiveResult;
-      if (perceptionResult) result.perceptionGap = perceptionResult;
 
       console.log('[viralyze:stage2]', {
         adaptiveProfile: adaptiveResult?.profileType ?? 'failed',
-        perceptionAlignment: perceptionResult?.alignmentScore ?? 'failed',
       });
     }
     // ────────────────────────────────────────────────────────────────────────────
@@ -131,14 +122,12 @@ export async function POST(req: NextRequest) {
         hasOcr: !!(ocrData?.hasText),
         hasUnderstanding: !!understanding,
         hasAdaptive: !!adaptiveResult,
-        hasPerceptionGap: !!perceptionResult,
       };
       result._debug.modulesRan = [
         'analyzeVideo',
         'analyzeViralPotential',
         understanding ? 'understandVideo' : null,
         adaptiveResult ? 'analyzeAdaptive' : null,
-        perceptionResult ? 'analyzePerceptionGap' : null,
       ].filter(Boolean) as string[];
     }
     // ────────────────────────────────────────────────────────────────────────────

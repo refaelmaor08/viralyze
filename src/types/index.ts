@@ -84,7 +84,6 @@ export interface DataQuality {
   hasOcr: boolean;
   hasUnderstanding: boolean;
   hasAdaptive: boolean;
-  hasPerceptionGap: boolean;
 }
 
 export interface DevDebugData {

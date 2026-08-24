@@ -190,14 +190,30 @@ function deframeArr(arr: string[], timestamps: number[], dur: number, isHe: bool
   return arr.map((s) => deframe(s, timestamps, dur, isHe));
 }
 
-function buildTranscriptSection(t: TranscriptData | null | undefined, isHe = false): string {
-  if (!t) return '';
+function buildTranscriptSection(t: TranscriptData | null | undefined, isHe = false, audioExtractionFailed = false): string {
+  if (!t) {
+    if (audioExtractionFailed) {
+      return `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AUDIO STATUS: DATA UNAVAILABLE
+Audio could not be extracted from this video (browser codec limitation — common with HEVC/MOV).
+This does NOT mean the video is silent. The video may contain speech, music, or both.
+▸ Do NOT state "no speech" or "the video is silent" — you have no evidence either way.
+▸ Do NOT recommend "add voiceover" or "add music" — they may already be present.
+▸ Do NOT claim audio absence is a weakness — you cannot confirm it.
+▸ Analyze from visual frames and any OCR text only.
+▸ For any audio-related observation: use "audio data was unavailable for this analysis" — do not speculate about presence or absence of speech or music.
+▸ In Hebrew output: if mentioning audio, write "נתוני האודיו לא היו זמינים לניתוח" — never "אין דיבור" or "הסרטון שקט".
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+    }
+    return '';
+  }
 
   if (!t.hasSpeech) {
     return `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AUDIO: NO SPEECH DETECTED
-This video has no spoken words — it is silent or music/ambient only.
+Whisper speech recognition confirmed: this video contains no spoken words — it is silent or music/ambient only.
 ▸ Analyze purely from visual frames and any OCR text.
 ▸ Hook: visual and text signals only — no spoken hook possible.
 ▸ Pacing: based on visual rhythm — no speech cadence to consider.
@@ -249,7 +265,7 @@ SPOKEN CONTENT INSTRUCTIONS — mandatory:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 
-function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null, ocrData?: OcrData | null): string {
+function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null, ocrData?: OcrData | null, audioExtractionFailed = false): string {
   const dur = Math.round(frameData.duration);
   const durFormatted = formatSec(dur);
   const isHe = context.language === 'hebrew';
@@ -293,7 +309,7 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, tra
     ? context.goals.map((g) => goalLabels[g] || g).join(', ')
     : '';
 
-  const transcriptSection = buildTranscriptSection(transcriptData, isHe);
+  const transcriptSection = buildTranscriptSection(transcriptData, isHe, audioExtractionFailed);
   const ocrSection = ocrData ? buildOcrSection(ocrData, dur, isHe) : '';
 
   const lowFrameWarning = frameCount < 5
@@ -707,14 +723,15 @@ export async function analyzeVideo(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null,
-  ocrData?: OcrData | null
+  ocrData?: OcrData | null,
+  audioExtractionFailed = false
 ): Promise<AnalysisResult> {
   // Hook frames (first 3) get high detail so GPT can actually distinguish between
   // different videos at the critical opening. Low detail (85 tokens) makes all
   // talking-head videos look identical; high detail (1105 tokens) shows expressions,
   // text overlays, lighting and movement that differentiate content.
   const content: ChatCompletionContentPart[] = [
-    { type: 'text', text: buildPrompt(frameData, context, transcriptData, ocrData) },
+    { type: 'text', text: buildPrompt(frameData, context, transcriptData, ocrData, audioExtractionFailed) },
     ...frameData.frames.map(
       (frame, idx): ChatCompletionContentPart => ({
         type: 'image_url',
@@ -1850,6 +1867,7 @@ export async function analyzeViralPotential(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null,
+  audioExtractionFailed = false,
 ): Promise<ViralPotentialAnalysis> {
   const isHe = context.language === 'hebrew';
 
@@ -1908,7 +1926,11 @@ Return valid JSON only:`;
     ? (isHe
         ? `\n\nתמלול (${transcriptData.speakingSpeedWpm} מילים/דקה): "${transcriptData.transcript.slice(0, 600)}${transcriptData.transcript.length > 600 ? '…' : ''}"`
         : `\n\nTranscript (${transcriptData.speakingSpeedWpm} wpm): "${transcriptData.transcript.slice(0, 600)}${transcriptData.transcript.length > 600 ? '…' : ''}"`)
-    : (isHe ? '\n\nאין דיבור — נתח לפי ויזואל בלבד.' : '\n\nNo speech detected — analyze visuals only.');
+    : audioExtractionFailed
+      ? (isHe
+          ? '\n\nנתוני האודיו לא היו זמינים לניתוח (מגבלת קודק בדפדפן). אל תציין "אין דיבור" או "הסרטון שקט" — ייתכן שיש דיבור או מוזיקה. נתח לפי ויזואל בלבד.'
+          : '\n\nAudio data unavailable (browser codec limitation). Do NOT state "no speech" or "silent video" — audio may be present. Analyze visuals only.')
+      : (isHe ? '\n\nאין דיבור — נתח לפי ויזואל בלבד.' : '\n\nNo speech detected — analyze visuals only.');
 
   const viralScoreGuide = isHe
     ? `\n\nמדריך ניקוד — כל ממד (השתמש בטווחים האלה ולא אמצעיים):

@@ -1193,7 +1193,8 @@ export async function analyzeVideo(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null,
-  ocrData?: OcrData | null
+  ocrData?: OcrData | null,
+  audioExtractionFailed?: boolean
 ): Promise<AnalysisResult> {
   if (AI_MODE === 'demo') {
     return getDemoAnalysis(context);
@@ -1205,7 +1206,7 @@ export async function analyzeVideo(
 
   // Default: OpenAI
   const { analyzeVideo: openaiAnalyze } = await import('./openai');
-  return openaiAnalyze(frameData, context, transcriptData, ocrData);
+  return openaiAnalyze(frameData, context, transcriptData, ocrData, audioExtractionFailed);
 }
 
 export async function analyzeAdaptive(
@@ -1702,11 +1703,12 @@ async function getDemoViralPotential(language: string): Promise<ViralPotentialAn
 export async function analyzeViralPotential(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
-  transcriptData?: TranscriptData | null
+  transcriptData?: TranscriptData | null,
+  audioExtractionFailed?: boolean
 ): Promise<ViralPotentialAnalysis> {
   if (AI_MODE === 'demo') {
     return getDemoViralPotential(context.language);
   }
   const { analyzeViralPotential: openaiViral } = await import('./openai');
-  return openaiViral(frameData, context, transcriptData);
+  return openaiViral(frameData, context, transcriptData, audioExtractionFailed);
 }

@@ -455,6 +455,7 @@ function AnalyzeContent() {
           transcriptData,
           ocrData,
           context: analysisContext,
+          audioExtractionFailed: audioBlobRef.current === null,
         }),
       });
 
