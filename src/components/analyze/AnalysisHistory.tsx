@@ -9,14 +9,7 @@ import {
 } from 'lucide-react';
 import { getHistory, removeFromHistory, renameInHistory, type HistoryEntry } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function scoreColor(score: number): string {
-  if (score >= 70) return '#22c55e';
-  if (score >= 45) return '#D4A843';
-  return '#ef4444';
-}
+import { scoreColor } from '@/lib/utils';
 
 function relativeDate(ts: number): string {
   const diff = Date.now() - ts;

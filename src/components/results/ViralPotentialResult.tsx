@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import type { ViralPotentialAnalysis } from '@/types';
+import { scoreColor } from '@/lib/utils';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -16,12 +17,6 @@ const DIMENSION_META: Record<
   rewatchPotential: { label: 'צפייה חוזרת',     emoji: '🔁' },
   memorability:     { label: 'בלתי נשכח',       emoji: '🧠' },
 };
-
-function scoreColor(s: number): string {
-  if (s >= 70) return '#22c55e';
-  if (s >= 45) return '#D4A843';
-  return '#ef4444';
-}
 
 // ─── Dimension card ───────────────────────────────────────────────────────────
 
@@ -132,7 +127,8 @@ export default function ViralPotentialResult({ analysis }: Props) {
           {analysis.viralScore}
         </motion.div>
 
-        <p className="text-sm text-white/35 font-medium">ציון ויראליות כולל</p>
+        <p className="text-sm text-white/35 font-medium">פוטנציאל וויראלי</p>
+        <p className="text-[10px] text-white/20 mt-0.5">פירוט לפי ממדים ויראליים ↓</p>
 
         <div className="mt-4 h-1.5 rounded-full overflow-hidden mx-8" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <motion.div
@@ -149,6 +145,7 @@ export default function ViralPotentialResult({ analysis }: Props) {
       </motion.div>
 
       {/* ── 6 Dimensions ───────────────────────────────────────────── */}
+      <p className="text-[11px] text-white/25 text-right mb-3">ציוני הממדים משקפים את הגורמים הפסיכולוגיים — לא ציון כולל נפרד</p>
       <div className="grid grid-cols-2 gap-2.5 mb-5">
         {dims.map(([key, dim], i) => (
           <DimCard key={key} dimKey={key} score={dim.score} insight={dim.insight} delay={0.12 + i * 0.05} />

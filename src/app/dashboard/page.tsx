@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/authContext';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { getHistory, getStoredResult, type HistoryEntry } from '@/lib/history';
 import { formatDurationLimit, PLANS } from '@/lib/plans';
+import { scoreColor } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 
 const AICreatorAssistant = dynamic(
@@ -21,12 +22,6 @@ const AICreatorAssistant = dynamic(
 );
 
 // ─── Helpers ─────────────────────────────────────────────
-
-function scoreColor(score: number) {
-  if (score >= 70) return '#22c55e';
-  if (score >= 45) return '#D4A843';
-  return '#ef4444';
-}
 
 function relativeDate(ts: number): string {
   const diff = Date.now() - ts;

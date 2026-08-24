@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, BarChart3, MessageSquare, Scissors, Search, ArrowRight, RefreshCw, LayoutDashboard, Clock, TrendingUp } from 'lucide-react';
 import { AnalysisResult, CompetitorAnalysis } from '@/types';
 import { getStoredResult } from '@/lib/history';
+import { scoreColor } from '@/lib/utils';
 import ScoreDashboard from '@/components/results/ScoreDashboard';
 import FeedbackPanel from '@/components/results/FeedbackPanel';
 import SuggestionsPanel from '@/components/results/SuggestionsPanel';
@@ -97,7 +98,7 @@ export default function ResultsPage() {
   }
 
   const viralScore = result.scores.viralPotential;
-  const scoreColor = viralScore >= 70 ? '#22c55e' : viralScore >= 50 ? '#D4A843' : '#ef4444';
+  const headerColor = scoreColor(viralScore);
 
   return (
     <div className="min-h-screen bg-[#080808]">
@@ -105,7 +106,7 @@ export default function ResultsPage() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[radial-gradient(ellipse,rgba(212,168,67,0.06)_0%,transparent_70%)]" />
         <div
           className="absolute top-0 left-1/2 -translate-x-1/2 w-[400px] h-[200px] blur-3xl opacity-20"
-          style={{ background: `radial-gradient(ellipse,${scoreColor} 0%,transparent 70%)` }}
+          style={{ background: `radial-gradient(ellipse,${headerColor} 0%,transparent 70%)` }}
         />
       </div>
 
@@ -170,9 +171,9 @@ export default function ResultsPage() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="rounded-2xl px-6 py-4 text-center"
             style={{
-              background: `${scoreColor}10`,
-              border: `1px solid ${scoreColor}35`,
-              boxShadow: `0 0 32px ${scoreColor}20`,
+              background: `${headerColor}10`,
+              border: `1px solid ${headerColor}35`,
+              boxShadow: `0 0 32px ${headerColor}20`,
             }}
           >
             <motion.div
@@ -180,7 +181,7 @@ export default function ResultsPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
               className="text-5xl font-black"
-              style={{ color: scoreColor }}
+              style={{ color: headerColor }}
             >
               {viralScore}
             </motion.div>

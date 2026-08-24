@@ -7,6 +7,7 @@ import { Sparkles, Send, Zap, LayoutDashboard, Lock, ArrowUpRight, ChevronDown, 
 import AuthGuard from '@/components/ui/AuthGuard';
 import { useAuth } from '@/lib/authContext';
 import { getHistory, getStoredResult } from '@/lib/history';
+import { scoreColor } from '@/lib/utils';
 
 // ─────────── Types ────────────────────────────────────────
 interface Message {
@@ -197,7 +198,7 @@ function MessageBubble({
 
 function VideoContextBanner({ ctx }: { ctx: VideoCtx }) {
   const [expanded, setExpanded] = useState(false);
-  const scoreColor = ctx.viralScore >= 70 ? '#22c55e' : ctx.viralScore >= 50 ? '#D4A843' : '#ef4444';
+  const bannerColor = scoreColor(ctx.viralScore);
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -218,7 +219,7 @@ function VideoContextBanner({ ctx }: { ctx: VideoCtx }) {
           </div>
           <div
             className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black flex-shrink-0"
-            style={{ background: `${scoreColor}18`, color: scoreColor, border: `1px solid ${scoreColor}30` }}
+            style={{ background: `${bannerColor}18`, color: bannerColor, border: `1px solid ${bannerColor}30` }}
           >
             {ctx.viralScore}
           </div>

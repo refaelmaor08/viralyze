@@ -88,6 +88,11 @@ export async function POST(req: NextRequest) {
         return null;
       }),
     ]);
+    // Pin the viral tab's overall score to the canonical analyzeVideo score so
+    // both places in the UI always show the same number. The dimensional subscores
+    // (shareability, emotionalImpact, etc.) from analyzeViralPotential remain
+    // independent — they provide psychological breakdown, not a second overall verdict.
+    viralAnalysis.viralScore = result.scores.viralPotential;
     result.viralAnalysis = viralAnalysis;
     // ────────────────────────────────────────────────────────────────────────────
 
