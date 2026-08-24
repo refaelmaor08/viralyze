@@ -13,6 +13,8 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File | null;
+    const languageHint = formData.get('language') as string | null;
+    const whisperLanguage = languageHint === 'hebrew' ? 'he' : languageHint === 'english' ? 'en' : undefined;
 
     if (!audioFile || audioFile.size === 0) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
@@ -23,6 +25,7 @@ export async function POST(req: Request): Promise<Response> {
       file: audioFile,
       response_format: 'verbose_json',
       timestamp_granularities: ['word'],
+      ...(whisperLanguage ? { language: whisperLanguage } : {}),
     });
 
     const rawWords = Array.isArray(transcription.words) ? transcription.words : [];

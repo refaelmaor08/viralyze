@@ -912,10 +912,11 @@ export async function understandVideo(
   const isHe = language === 'hebrew';
   const dur = Math.round(frameData.duration);
 
+  const classifyFrames = frameData.frames.slice(0, 6);
   const content: ChatCompletionContentPart[] = [
     {
       type: 'text',
-      text: `You are a video content classification expert. Study these ${frameData.frames.length} extracted frames from a ${dur}-second video.
+      text: `You are a video content classification expert. Study these ${classifyFrames.length} extracted frames from a ${dur}-second video.
 
 YOUR ONLY TASK: understand what type of content this is. Do NOT score quality. Do NOT give suggestions.
 
@@ -947,7 +948,7 @@ Study the frames carefully and return ONLY this JSON:
   "confidence": <integer 60-99>
 }`,
     },
-    ...frameData.frames.map(
+    ...classifyFrames.map(
       (frame): ChatCompletionContentPart => ({
         type: 'image_url',
         image_url: { url: frame, detail: 'auto' },
@@ -1124,7 +1125,7 @@ VIEWER IMPRESSION: ${understanding.viewerFirstImpression}
 
 ANALYST MINDSET: ${analysisCxt}
 
-Study the ${frameData.frames.length} frames carefully. Evaluate ONLY these 6 metrics — chosen specifically for ${understanding.primaryType} content:
+Using the video classification and creator context above, evaluate ONLY these 6 metrics — chosen specifically for ${understanding.primaryType} content:
 
 ${metricsList}
 
@@ -1156,12 +1157,6 @@ Return ONLY valid JSON:
   "verdict": "<one sentence>"
 }`,
     },
-    ...frameData.frames.map(
-      (frame): ChatCompletionContentPart => ({
-        type: 'image_url',
-        image_url: { url: frame, detail: 'auto' },
-      })
-    ),
   ];
 
   const completion = await openai.chat.completions.create({
@@ -1907,6 +1902,7 @@ export async function analyzeViralPotential(
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null,
   audioExtractionFailed = false,
+  videoUnderstanding?: VideoUnderstanding | null,
 ): Promise<ViralPotentialAnalysis> {
   const isHe = context.language === 'hebrew';
 
@@ -2004,19 +2000,27 @@ A score of 48–55 is FORBIDDEN unless you explain exactly why this dimension is
   "topImprovement": "<one specific, actionable change that would most increase viral potential>"
 }${viralScoreGuide}`;
 
-  const userText = isHe
-    ? `נתח את הפוטנציאל הוויראלי של הסרטון הזה.\n\n${contextLine}${transcriptHint}\n\n${schema}`
-    : `Analyze the viral potential of this video.\n\n${contextLine}${transcriptHint}\n\n${schema}`;
+  const understandingContext = videoUnderstanding
+    ? (isHe
+      ? `\n\nסיווג הסרטון: ${videoUnderstanding.primaryType} / ${videoUnderstanding.secondaryType}\nכוונת היוצר: ${videoUnderstanding.creatorIntent}\nרושם ראשוני של הצופה: ${videoUnderstanding.viewerFirstImpression}\nמשך: ${Math.round(frameData.duration)}s | קצב עריכה: ${frameData.editingPace} (${frameData.cutsPerSecond.toFixed(1)} חתכים/שנ')`
+      : `\n\nVideo classification: ${videoUnderstanding.primaryType} / ${videoUnderstanding.secondaryType}\nCreator intent: ${videoUnderstanding.creatorIntent}\nViewer first impression: ${videoUnderstanding.viewerFirstImpression}\nDuration: ${Math.round(frameData.duration)}s | Editing pace: ${frameData.editingPace} (${frameData.cutsPerSecond.toFixed(1)} cuts/sec)`)
+    : '';
 
-  const content: ChatCompletionContentPart[] = [
-    { type: 'text', text: userText },
-    ...frameData.frames.map(
-      (frame): ChatCompletionContentPart => ({
-        type: 'image_url',
-        image_url: { url: frame, detail: 'auto' },
-      })
-    ),
-  ];
+  const userText = isHe
+    ? `נתח את הפוטנציאל הוויראלי של הסרטון הזה.\n\n${contextLine}${transcriptHint}${understandingContext}\n\n${schema}`
+    : `Analyze the viral potential of this video.\n\n${contextLine}${transcriptHint}${understandingContext}\n\n${schema}`;
+
+  const content: ChatCompletionContentPart[] = videoUnderstanding
+    ? [{ type: 'text', text: userText }]
+    : [
+        { type: 'text', text: userText },
+        ...frameData.frames.map(
+          (frame): ChatCompletionContentPart => ({
+            type: 'image_url',
+            image_url: { url: frame, detail: 'auto' },
+          })
+        ),
+      ];
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',

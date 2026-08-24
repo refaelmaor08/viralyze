@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive } from '@/lib/aiProvider';
 import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
-import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis } from '@/types';
 
 export const maxDuration = 120;
 
@@ -88,26 +88,23 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ── Stage 1: main analysis + viral + content understanding (all parallel) ───
-    const [result, viralAnalysis, understanding] = await Promise.all([
+    // ── Stage 1: main analysis + content understanding (parallel) ──────────────
+    // understandVideo uses only first 6 frames for fast classification.
+    // analyzeVideo uses all frames (first 3 high detail) as the primary quality signal.
+    const stage1Start = Date.now();
+    const [result, understanding] = await Promise.all([
       analyzeVideo(frameData, context, transcriptData ?? null, finalOcrData, audioExtractionFailed ?? false),
-      analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false),
       understandVideo(frameData, context.language).catch((e: unknown) => {
         console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
         return null;
       }),
     ]);
-    // Pin the viral tab's overall score to the canonical analyzeVideo score so
-    // both places in the UI always show the same number. The dimensional subscores
-    // (shareability, emotionalImpact, etc.) from analyzeViralPotential remain
-    // independent — they provide psychological breakdown, not a second overall verdict.
-    viralAnalysis.viralScore = result.scores.viralPotential;
-    result.viralAnalysis = viralAnalysis;
-    // ────────────────────────────────────────────────────────────────────────────
+    console.log('[viralyze:stage1]', {
+      durationMs: Date.now() - stage1Start,
+      frameCount: frameData.frames.length,
+      understandingType: understanding?.primaryType ?? 'failed',
+    });
 
-    // ── Stage 2: profile-specific adaptive analysis ──────────────────────────────
-    // Only runs when Stage 1 understanding succeeded.
-    let adaptiveResult = null;
     if (understanding) {
       result.understanding = understanding;
       console.log('[viralyze:understanding]', {
@@ -115,18 +112,43 @@ export async function POST(req: NextRequest) {
         confidence: understanding.confidence,
         creatorIntent: understanding.creatorIntent?.slice(0, 100),
       });
-
-      adaptiveResult = await analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
-        console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
-        return null;
-      });
-
-      if (adaptiveResult) result.adaptiveAnalysis = adaptiveResult;
-
-      console.log('[viralyze:stage2]', {
-        adaptiveProfile: adaptiveResult?.profileType ?? 'failed',
-      });
     }
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // ── Stage 2: viral potential + adaptive (both parallel, text-only when understanding available) ──
+    // analyzeViralPotential: skips frame images when understanding context is available,
+    // using text context instead — faster and ~30% cheaper on image tokens.
+    // analyzeAdaptive: text-only (no frames) since it has full understanding context.
+    const stage2Start = Date.now();
+    let viralAnalysis: ViralPotentialAnalysis;
+    let adaptiveResult = null;
+
+    if (understanding) {
+      [viralAnalysis, adaptiveResult] = await Promise.all([
+        analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false, understanding),
+        analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
+          console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
+          return null;
+        }),
+      ]);
+    } else {
+      viralAnalysis = await analyzeViralPotential(frameData, context, transcriptData ?? null, audioExtractionFailed ?? false, null);
+    }
+
+    console.log('[viralyze:stage2]', {
+      durationMs: Date.now() - stage2Start,
+      viralModeTextOnly: !!understanding,
+      adaptiveProfile: adaptiveResult?.profileType ?? 'failed',
+    });
+
+    // Pin the viral tab's overall score to the canonical analyzeVideo score so
+    // both places in the UI always show the same number. The dimensional subscores
+    // (shareability, emotionalImpact, etc.) from analyzeViralPotential remain
+    // independent — they provide psychological breakdown, not a second overall verdict.
+    viralAnalysis.viralScore = result.scores.viralPotential;
+    result.viralAnalysis = viralAnalysis;
+
+    if (adaptiveResult) result.adaptiveAnalysis = adaptiveResult;
     // ────────────────────────────────────────────────────────────────────────────
 
     // ── Track data availability in debug panel ───────────────────────────────────
@@ -146,7 +168,16 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ── Final score log (visible in Vercel Function Logs) ───────────────────────
+    // ── Final score + cost telemetry log (visible in Vercel Function Logs) ────────
+    const totalMs = Date.now() - stage1Start;
+    // Approximate frame image token cost: high-detail ~1105 tokens, low/auto ~85 tokens.
+    // analyzeVideo: 3×high + 9×auto = 3×1105 + 9×85 = 4080 image tokens
+    // understandVideo: min(N,6)×auto = up to 6×85 = 510 image tokens
+    // analyzeViralPotential: 0 tokens when text-only (understanding available), else 12×85 = 1020
+    // analyzeAdaptive: 0 tokens (text-only)
+    const understandFrames = Math.min(frameData.frames.length, 6);
+    const viralImageTokens = understanding ? 0 : frameData.frames.length * 85;
+    const estImageTokens = 4080 + (understandFrames * 85) + viralImageTokens;
     console.log('[viralyze:final-scores]', JSON.stringify({
       viralPotential: result.scores.viralPotential,
       hookStrength: result.scores.hookStrength,
@@ -154,6 +185,15 @@ export async function POST(req: NextRequest) {
       pacing: result.scores.pacing,
       allScores: result.scores,
       modulesRan: result._debug?.modulesRan ?? [],
+      telemetry: {
+        totalMs,
+        videoDurationSec: Math.round(frameData.duration),
+        frameCount: frameData.frames.length,
+        understandFrames,
+        viralModeTextOnly: !!understanding,
+        estImageTokens,
+        whisperLanguage: transcriptData?.language ?? null,
+      },
     }));
     // ────────────────────────────────────────────────────────────────────────────
 

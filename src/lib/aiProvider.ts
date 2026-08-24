@@ -1704,11 +1704,12 @@ export async function analyzeViralPotential(
   frameData: VideoFrameData,
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null,
-  audioExtractionFailed?: boolean
+  audioExtractionFailed?: boolean,
+  videoUnderstanding?: VideoUnderstanding | null,
 ): Promise<ViralPotentialAnalysis> {
   if (AI_MODE === 'demo') {
     return getDemoViralPotential(context.language);
   }
   const { analyzeViralPotential: openaiViral } = await import('./openai');
-  return openaiViral(frameData, context, transcriptData, audioExtractionFailed);
+  return openaiViral(frameData, context, transcriptData, audioExtractionFailed, videoUnderstanding);
 }

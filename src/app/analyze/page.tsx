@@ -416,6 +416,7 @@ function AnalyzeContent() {
           try {
             const audioForm = new FormData();
             audioForm.append('audio', audioBlobRef.current, 'audio.wav');
+            audioForm.append('language', analysisContext.language);
             const res = await fetch('/api/transcribe', { method: 'POST', body: audioForm });
             if (res.ok) transcriptData = await res.json() as TranscriptData;
           } catch {
