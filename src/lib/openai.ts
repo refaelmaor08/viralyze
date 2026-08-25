@@ -380,6 +380,105 @@ ${rules.join('\n')}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 
+// Weave frame timestamps + transcript words + OCR segments + audio into a
+// chronological narrative. Each frame "owns" the interval between it and its
+// neighbours (midpoint split). Words, OCR, and audio are bucketed by that range.
+// Pure function — no side effects, no API calls.
+export function buildTemporalNarrative(
+  frameTimestamps: number[],
+  duration: number,
+  transcriptData: TranscriptData | null | undefined,
+  ocrData: OcrData | null | undefined,
+  audioEvidence: AudioEvidence | null | undefined,
+  sceneChanges: number[],
+): string {
+  if (frameTimestamps.length === 0) return '';
+
+  const words = transcriptData?.hasSpeech ? (transcriptData.words ?? []) : [];
+  const ocrSegs = ocrData?.hasText ? (ocrData.segments ?? []) : [];
+  const audioAvailable = audioEvidence?.audioIsAvailable && audioEvidence.status !== 'unknown';
+
+  const fmtTime = (s: number): string => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  };
+
+  // Each frame section covers [prev_midpoint, next_midpoint)
+  const sections = frameTimestamps.map((ts, i) => {
+    const start = i === 0 ? 0 : (frameTimestamps[i - 1] + ts) / 2;
+    const end = i === frameTimestamps.length - 1 ? duration : (ts + frameTimestamps[i + 1]) / 2;
+    return { frameNum: i + 1, ts, start, end };
+  });
+
+  const lines: string[] = [
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    'TEMPORAL NARRATIVE — synchronized evidence: what actually happens when',
+    '(Reason about the complete story here before scoring anything)',
+    '',
+  ];
+
+  let wordsCovered = 0;
+  let ocrCovered = 0;
+  let sceneMarked = 0;
+
+  for (const { frameNum, ts, start, end } of sections) {
+    const isHook = ts <= 3.0;
+    const isFinal = frameNum === frameTimestamps.length;
+    const sceneHere = sceneChanges.filter((sc) => sc >= start && sc < end);
+
+    for (const sc of sceneHere) {
+      lines.push(`  ⚡ Scene change at ${sc.toFixed(1)}s`);
+      sceneMarked++;
+    }
+
+    const zone = isHook ? ' (hook zone)' : isFinal ? ' (final section)' : '';
+    lines.push(`[${fmtTime(start)}–${fmtTime(end)}] Frame ${frameNum}${zone}`);
+
+    const sectionWords = words.filter((w) => w.start >= start && w.start < end);
+    wordsCovered += sectionWords.length;
+    if (sectionWords.length > 0) {
+      const text = sectionWords.slice(0, 14).map((w) => w.word).join(' ');
+      const ellipsis = sectionWords.length > 14 ? ' …' : '';
+      lines.push(`  Speech: "${text}${ellipsis}"`);
+    }
+
+    const sectionOcr = ocrSegs.filter(
+      (seg) => seg.normalizedConfidence !== 'low' && seg.startTime < end && (seg.endTime > start || seg.endTime === 0),
+    );
+    ocrCovered += sectionOcr.length;
+    if (sectionOcr.length > 0) {
+      const ocrText = sectionOcr
+        .slice(0, 2)
+        .map((seg) => `"${seg.normalizedText ?? seg.text}"`)
+        .join(', ');
+      lines.push(`  On-screen: ${ocrText}`);
+    }
+
+    if (audioAvailable) {
+      const maskHere = (audioEvidence?.maskingSegments ?? []).filter(
+        (m) => m.startSec < end && m.endSec > start,
+      );
+      if (maskHere.length > 0) {
+        lines.push(`  Audio: speech + background music (masking risk)`);
+      } else {
+        const statusLabel =
+          audioEvidence!.status === 'speech-only' ? 'speech-only' :
+          audioEvidence!.status === 'speech-music' ? 'speech + background music' :
+          audioEvidence!.status === 'music-only' ? 'music/ambient (no speech)' :
+          audioEvidence!.status === 'silence' ? 'near-silence' : null;
+        if (statusLabel) lines.push(`  Audio: ${statusLabel}`);
+      }
+    }
+
+    lines.push('');
+  }
+
+  lines.push(`Coverage: ${frameTimestamps.length} frames | ${wordsCovered} words | ${ocrCovered} text segments | ${sceneMarked} scene transitions`);
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  return lines.join('\n');
+}
+
 function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null, ocrData?: OcrData | null, audioExtractionFailed = false, audioEvidence?: AudioEvidence | null): string {
   const dur = Math.round(frameData.duration);
   const durFormatted = formatSec(dur);
@@ -427,6 +526,9 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, tra
   const transcriptSection = buildTranscriptSection(transcriptData, isHe, audioExtractionFailed);
   const audioSection = buildAudioSection(audioEvidence, isHe);
   const ocrSection = ocrData ? buildOcrSection(ocrData, dur, isHe) : '';
+  const temporalNarrative = buildTemporalNarrative(
+    frameTimestamps, dur, transcriptData, ocrData, audioEvidence, frameData.sceneChanges,
+  );
 
   const lowFrameWarning = frameCount < 5
     ? `\n⚠️ VERY FEW FRAMES (${frameCount}): The video format may have caused partial extraction (e.g. HEVC/H.265 on an unsupported browser). Score conservatively — write "${isHe ? 'נתוני ויזואל מוגבלים' : 'Limited visual data'}" rather than inventing observations. Do NOT give scores of 1 unless you have genuine evidence of failure.\n`
@@ -450,6 +552,7 @@ MEASURED VIDEO SIGNALS (extracted client-side before AI analysis — use these e
 When scoring "pacing": base it on the measured ${frameData.editingPace} pace (${frameData.cutsPerSecond.toFixed(2)} cuts/sec). Do not contradict these measurements.
 When scoring "hookStrength": you have dense frame coverage of the first 3 seconds — describe exactly what you see in those frames.
 ${transcriptSection}${audioSection}${ocrSection}
+${temporalNarrative}
 ${contextualInstructions ? `CONSTRAINTS:\n${contextualInstructions}\n` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 1 — DURATION (ABSOLUTE, NO EXCEPTIONS)
@@ -1024,17 +1127,21 @@ export async function analyzeVideo(
 
 export async function understandVideo(
   frameData: VideoFrameData,
-  language: string
+  language: string,
+  transcriptSummary?: string,
 ): Promise<VideoUnderstanding> {
   const isHe = language === 'hebrew';
   const dur = Math.round(frameData.duration);
 
   const classifyFrames = frameData.frames.slice(0, 6);
+  const speechContext = transcriptSummary
+    ? `\nSPEECH CONTEXT (use this to inform classification — speech reveals intent that visuals alone may miss):\n${transcriptSummary}\n`
+    : '';
+
   const content: ChatCompletionContentPart[] = [
     {
       type: 'text',
-      text: `You are a video content classification expert. Study these ${classifyFrames.length} extracted frames from a ${dur}-second video.
-
+      text: `You are a video content classification expert. Study these ${classifyFrames.length} extracted frames from a ${dur}-second video.${speechContext}
 YOUR ONLY TASK: understand what type of content this is. Do NOT score quality. Do NOT give suggestions.
 
 Available content types:

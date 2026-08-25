@@ -35,19 +35,53 @@ function targetTimestamps(dur: number, max: number): number[] {
   return [...new Set(ts)].sort((a, b) => a - b).slice(0, max);
 }
 
+// Merge scene-change timestamps into a base target list.
+// Hook frames (≤3s) and the end frame are preserved; scene changes take priority
+// over body-zone targets when trimming to max.
+function mergeWithSceneChanges(base: number[], sceneChanges: number[], max: number): number[] {
+  if (sceneChanges.length === 0) return base;
+
+  // Add scene-change timestamps that aren't already covered by a base target within 1s
+  const extra: number[] = [];
+  for (const sc of sceneChanges) {
+    if (!base.some((t) => Math.abs(t - sc) < 1.0)) extra.push(sc);
+  }
+
+  const merged = [...base, ...extra].sort((a, b) => a - b);
+  if (merged.length <= max) return merged;
+
+  // Trim: keep hooks (≤3s, up to 3), scene-change targets, end frame, then body
+  const hookSet = new Set(base.filter((t) => t <= 3.0).slice(0, 3));
+  const endTarget = base[base.length - 1];
+  const extraSet = new Set(extra);
+
+  const priority = [
+    ...merged.filter((t) => hookSet.has(t)),
+    ...merged.filter((t) => extraSet.has(t)),
+    ...(hookSet.has(endTarget) || extraSet.has(endTarget) ? [] : [endTarget]),
+    ...merged.filter((t) => !hookSet.has(t) && !extraSet.has(t) && t !== endTarget),
+  ];
+
+  return [...new Set(priority)].sort((a, b) => a - b).slice(0, max);
+}
+
 // Select a consistent subset of frames for AI.
 // If already within the limit, returns unchanged.
 // Otherwise picks the closest available frame for each target timestamp.
+// sceneChanges: timestamps where a visual cut was detected — frames near these
+// are prioritised over evenly-spaced body frames.
 export function normalizeFramesForAI(
   frames: string[],
   timestamps: number[],
   duration: number,
   max = MAX_AI_FRAMES,
+  sceneChanges: number[] = [],
 ): { frames: string[]; frameTimestamps: number[] } {
   if (frames.length === 0) return { frames: [], frameTimestamps: [] };
   if (frames.length <= max) return { frames, frameTimestamps: timestamps };
 
-  const targets = targetTimestamps(duration, max);
+  const base = targetTimestamps(duration, max);
+  const targets = mergeWithSceneChanges(base, sceneChanges, max);
   const used = new Set<number>();
   const selected: number[] = [];
 

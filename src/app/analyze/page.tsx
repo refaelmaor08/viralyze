@@ -197,7 +197,7 @@ function AnalyzeContent() {
       // Cap both paths to MAX_AI_FRAMES (12) with the same hook+body+end
       // timestamp distribution so desktop and mobile send identical frame counts
       // and coverage patterns to the AI.
-      const norm = normalizeFramesForAI(finalFrames, finalTs, meta.duration);
+      const norm = normalizeFramesForAI(finalFrames, finalTs, meta.duration, undefined, finalScene);
       finalFrames = norm.frames;
       finalTs     = norm.frameTimestamps;
       // ─────────────────────────────────────────────────────────────────────

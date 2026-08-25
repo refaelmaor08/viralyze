@@ -1174,13 +1174,14 @@ async function getDemoPerception(language: string): Promise<PerceptionGap> {
 
 export async function understandVideo(
   frameData: VideoFrameData,
-  language: string
+  language: string,
+  transcriptSummary?: string,
 ): Promise<VideoUnderstanding> {
   if (AI_MODE === 'demo') {
     return getDemoUnderstanding(language);
   }
   const { understandVideo: openaiUnderstand } = await import('./openai');
-  return openaiUnderstand(frameData, language);
+  return openaiUnderstand(frameData, language, transcriptSummary);
 }
 
 export async function analyzePerceptionGap(

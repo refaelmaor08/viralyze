@@ -30,7 +30,7 @@ function makeUnderstanding(overrides: Partial<VideoUnderstanding> = {}): VideoUn
 // ─── CU-A: Advertisement + explicit commercial evidence ────────────────────────
 it('CU-A: advertisement with price in transcript → commercialIntent=true, explicit CTA', () => {
   const u = makeUnderstanding({ primaryType: 'advertisement', secondaryType: 'showcase' });
-  const transcript = { hasSpeech: true, transcript: 'קנה עכשיו ב-₪99 בלבד, הנחה של 30%', words: [], language: 'he' as const, speakingSpeedWpm: 120, hookWords: null, ctaWords: null, silencePeriods: [] };
+  const transcript = { hasSpeech: true, transcript: 'קנה עכשיו ב-₪99 בלבד, הנחה של 30%', words: [], language: 'he' as const, speakingSpeedWpm: 120, hookWords: '', ctaWords: '', silencePeriods: [] };
   const cu = deriveContentUnderstanding(u, transcript, null, null);
   expect(cu.commercialIntent).toBe(true);
   expect(cu.ctaExpectation).toBe('explicit');
@@ -40,7 +40,7 @@ it('CU-A: advertisement with price in transcript → commercialIntent=true, expl
 // ─── CU-B: Organic TikTok with no commercial evidence ─────────────────────────
 it('CU-B: organic-tiktok with no commercial keywords → commercialIntent=false, ctaExpectation=none', () => {
   const u = makeUnderstanding({ primaryType: 'organic-tiktok', secondaryType: 'storytelling' });
-  const transcript = { hasSpeech: true, transcript: 'שיתפתי חוויה אישית שלי מהשבוע שעבר', words: [], language: 'he' as const, speakingSpeedWpm: 110, hookWords: null, ctaWords: null, silencePeriods: [] };
+  const transcript = { hasSpeech: true, transcript: 'שיתפתי חוויה אישית שלי מהשבוע שעבר', words: [], language: 'he' as const, speakingSpeedWpm: 110, hookWords: '', ctaWords: '', silencePeriods: [] };
   const cu = deriveContentUnderstanding(u, transcript, null, null);
   expect(cu.commercialIntent).toBe(false);
   expect(cu.ctaExpectation).toBe('none');
@@ -51,7 +51,7 @@ it('CU-B: organic-tiktok with no commercial keywords → commercialIntent=false,
 it('CU-C: advertisement type with empty transcript → commercialIntent=false without evidence', () => {
   const u = makeUnderstanding({ primaryType: 'advertisement', confidence: 70 });
   // Empty transcript — no price/offer/CTA evidence
-  const transcript = { hasSpeech: false, transcript: '', words: [], language: 'he' as const, speakingSpeedWpm: 0, hookWords: null, ctaWords: null, silencePeriods: [] };
+  const transcript = { hasSpeech: false, transcript: '', words: [], language: 'he' as const, speakingSpeedWpm: 0, hookWords: '', ctaWords: '', silencePeriods: [] };
   const cu = deriveContentUnderstanding(u, transcript, null, null);
   // Empty combined text → isCommercialType=true but combinedText.length is 0 (< 20)
   expect(cu.commercialIntent).toBe(false);

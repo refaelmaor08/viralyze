@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, deriveContentUnderstanding } from '@/lib/aiProvider';
 import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
-import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence, ContentUnderstanding } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence, ContentUnderstanding, WholeVideoUnderstanding } from '@/types';
 
 export const maxDuration = 120;
 
@@ -137,9 +137,17 @@ export async function POST(req: NextRequest) {
     // understandVideo uses only first 6 frames for fast classification.
     // analyzeVideo uses all frames (first 3 high detail) as the primary quality signal.
     const stage1Start = Date.now();
+
+    // Transcript summary gives understandVideo speech context for accurate classification
+    const transcriptSummary = finalTranscriptData?.hasSpeech
+      ? (finalTranscriptData.hookWords
+          ? `Hook (first 3s): "${finalTranscriptData.hookWords}"\nFull transcript: "${finalTranscriptData.transcript.slice(0, 350)}"`
+          : finalTranscriptData.transcript.slice(0, 400))
+      : undefined;
+
     const [result, understanding] = await Promise.all([
       analyzeVideo(frameData, context, finalTranscriptData, finalOcrData, audioExtractionFailed ?? false, audioEvidence),
-      understandVideo(frameData, context.language).catch((e: unknown) => {
+      understandVideo(frameData, context.language, transcriptSummary).catch((e: unknown) => {
         console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
         return null;
       }),
@@ -176,6 +184,34 @@ export async function POST(req: NextRequest) {
         ctaExpectation: contentUnderstanding.ctaExpectation,
         likelyAudience: contentUnderstanding.likelyAudience,
       });
+
+      // Build WholeVideoUnderstanding by extracting GPT _observations + ContentUnderstanding.
+      // Zero extra API cost — observations come from the already-completed analyzeVideo call.
+      const obs = result._debug?.rawGptResponse?._observations as Record<string, string> | undefined;
+      if (obs && typeof obs === 'object') {
+        const wvu: WholeVideoUnderstanding = {
+          openingStrategy: String(obs.openingStrategy ?? ''),
+          mainMessage: String(obs.spokenMeaning ?? ''),
+          visualSignals: String(obs.visualSignals ?? ''),
+          emotionalSignals: String(obs.emotionalSignals ?? ''),
+          retentionLogic: String(obs.retentionLogic ?? ''),
+          strongestElement: String(obs.strongestElement ?? ''),
+          weakestElement: String(obs.weakestElement ?? ''),
+          synthesis: String(obs.synthesis ?? ''),
+          contentType: contentUnderstanding.primaryType,
+          primaryObjective: contentUnderstanding.primaryObjective,
+          commercialIntent: contentUnderstanding.commercialIntent,
+          emotionalTone: contentUnderstanding.emotionalTone,
+        };
+        result.wholeVideoUnderstanding = wvu;
+        console.log('[viralyze:whole-video]', {
+          contentType: wvu.contentType,
+          primaryObjective: wvu.primaryObjective,
+          commercialIntent: wvu.commercialIntent,
+          strongestElement: wvu.strongestElement.slice(0, 120),
+          weakestElement: wvu.weakestElement.slice(0, 120),
+        });
+      }
     }
     // ────────────────────────────────────────────────────────────────────────────
 

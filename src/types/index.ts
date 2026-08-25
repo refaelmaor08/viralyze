@@ -113,6 +113,7 @@ export interface AnalysisResult {
   understanding?: VideoUnderstanding;
   adaptiveAnalysis?: AdaptiveAnalysis;
   perceptionGap?: PerceptionGap;
+  wholeVideoUnderstanding?: WholeVideoUnderstanding;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────
@@ -153,6 +154,23 @@ export interface ContentUnderstanding extends VideoUnderstanding {
   commercialIntent: boolean;
   likelyAudience: string;
   ctaExpectation: CTAExpectation;
+}
+
+// ─── Whole-Video Understanding (extracted from GPT _observations + ContentUnderstanding) ─
+
+export interface WholeVideoUnderstanding {
+  openingStrategy: string;
+  mainMessage: string;
+  visualSignals: string;
+  emotionalSignals: string;
+  retentionLogic: string;
+  strongestElement: string;
+  weakestElement: string;
+  synthesis: string;
+  contentType: ContentTypeDetected;
+  primaryObjective: ContentObjective;
+  commercialIntent: boolean;
+  emotionalTone: EmotionalTone;
 }
 
 // ─── Perception Gap Engine (Stage 2) ──────────────────────────────────────────
