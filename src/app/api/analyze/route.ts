@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, deriveContentUnderstanding } from '@/lib/aiProvider';
+import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, deriveContentUnderstanding, analyzeVideoAudit } from '@/lib/aiProvider';
 import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
-import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence, ContentUnderstanding, WholeVideoUnderstanding } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence, ContentUnderstanding, WholeVideoUnderstanding, MasterVideoAudit } from '@/types';
 
 export const maxDuration = 120;
 
@@ -215,23 +215,32 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ── Stage 2: viral potential + adaptive (both parallel, text-only when understanding available) ──
+    // ── Stage 2: viral potential + adaptive + master audit (all parallel) ──────
     // analyzeViralPotential: skips frame images when understanding context is available,
     // using text context instead — faster and ~30% cheaper on image tokens.
     // analyzeAdaptive: text-only (no frames) since it has full understanding context.
+    // analyzeVideoAudit: text-only structured 220-check quality audit using WVU + evidence.
     const stage2Start = Date.now();
     let viralAnalysis: ViralPotentialAnalysis;
     let adaptiveResult = null;
+    let auditResult: MasterVideoAudit | null = null;
 
     // Pass ContentUnderstanding (superset of VideoUnderstanding) to Stage 2 when available.
     const stage2Understanding = contentUnderstanding ?? understanding;
     if (stage2Understanding) {
-      [viralAnalysis, adaptiveResult] = await Promise.all([
+      const wvu = result.wholeVideoUnderstanding;
+      [viralAnalysis, adaptiveResult, auditResult] = await Promise.all([
         analyzeViralPotential(frameData, context, finalTranscriptData, audioExtractionFailed ?? false, stage2Understanding),
         analyzeAdaptive(frameData, context, stage2Understanding).catch((e: unknown) => {
           console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
           return null;
         }),
+        wvu
+          ? analyzeVideoAudit(frameData, context, wvu, finalTranscriptData, finalOcrData, audioEvidence).catch((e: unknown) => {
+              console.error('[viralyze:audit] failed:', e instanceof Error ? e.message : String(e));
+              return null;
+            })
+          : Promise.resolve(null),
       ]);
     } else {
       viralAnalysis = await analyzeViralPotential(frameData, context, finalTranscriptData, audioExtractionFailed ?? false, null);
@@ -251,6 +260,20 @@ export async function POST(req: NextRequest) {
     result.viralAnalysis = viralAnalysis;
 
     if (adaptiveResult) result.adaptiveAnalysis = adaptiveResult;
+    if (auditResult) {
+      result.videoAudit = auditResult;
+      console.log('[viralyze:audit]', {
+        checksEvaluated: auditResult.checksEvaluated,
+        checksPositive: auditResult.checksPositive,
+        checksNegative: auditResult.checksNegative,
+        checksUncertain: auditResult.checksUncertain,
+        checksNotApplicable: auditResult.checksNotApplicable,
+        timelineFindings: auditResult.timeline.length,
+        weaknessesSurfaced: auditResult.weaknesses.length,
+        strengthsSurfaced: auditResult.strengths.length,
+        overallConfidence: auditResult.overallConfidence,
+      });
+    }
     // ────────────────────────────────────────────────────────────────────────────
 
     // ── Track data availability in debug panel ───────────────────────────────────

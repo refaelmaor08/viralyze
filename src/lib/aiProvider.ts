@@ -31,6 +31,10 @@ import type {
   ViralPotentialAnalysis,
   OcrData,
   AudioEvidence,
+  WholeVideoUnderstanding,
+  MasterVideoAudit,
+  AuditCategorySummary,
+  AuditCategoryId,
 } from '@/types';
 
 // Default to 'real' when OPENAI_API_KEY is present; fall back to 'demo' only when no key configured
@@ -1817,4 +1821,88 @@ export function deriveContentUnderstanding(
     likelyAudience,
     ctaExpectation,
   };
+}
+
+// ─── Master Video Audit Engine ─────────────────────────────────────────────────
+
+function makeDemoCategory(
+  id: AuditCategoryId,
+  label: string,
+  pos: number,
+  neg: number,
+  unc: number,
+  na: number,
+): AuditCategorySummary {
+  return {
+    id,
+    label,
+    overallStatus: neg > pos ? 'mixed' : pos > 0 ? 'positive' : 'uncertain',
+    strengths: pos > 0 ? [{ title: label + ' — element works well', what: 'This aspect performs effectively', where: null, why: 'Supports viewer engagement', evidence: 'From primary analysis', shouldPreserve: true }] : [],
+    weaknesses: neg > 0 ? [{ title: label + ' — area for improvement', severity: 'medium' as const, confidence: 0.75, what: 'This aspect could be improved', where: null, why: 'Reduces viewer engagement', evidence: 'From primary analysis', recommendation: 'Strengthen this element', relatedChecks: [] }] : [],
+    checksEvaluated: pos + neg + unc,
+    checksPositive: pos,
+    checksNegative: neg,
+    checksUncertain: unc,
+    checksNotApplicable: na,
+  };
+}
+
+const DEMO_AUDIT_HE: MasterVideoAudit = {
+  videoSummary: 'הסרטון מציג פתיחה חזקה עם קריאה לפעולה ברורה, אך ה-pacing בחלק האמצעי מאט ועלול לאבד צופים.',
+  highestImpactImprovement: 'קצור את החלק האמצעי ב-3-4 שניות כדי לשמור על מומנטום ולהגיע לאפקט מוקדם יותר.',
+  overallConfidence: 0.82,
+  strengths: [
+    { title: 'פתיחה חזקה', what: 'הפריים הראשון מושך תשומת לב מיידית', where: 'שנייה 0-2', why: 'עוצר את הגלילה ויוצר סקרנות', evidence: 'מניתוח פריים 1: רמת עניין ויזואלית גבוהה', shouldPreserve: true, startTime: 0, endTime: 2 },
+    { title: 'קריאה לפעולה ברורה', what: 'ה-CTA מופיע בזמן הנכון ועם הניסוח המתאים', where: 'לקראת הסוף', why: 'מגדיל את סיכויי ההמרה', evidence: 'מנתוני ה-OCR וניתוח הדיבור', shouldPreserve: true },
+  ],
+  weaknesses: [
+    { title: 'ירידה בקצב באמצע', severity: 'high', confidence: 0.8, what: 'החלק האמצעי מאט ואין מידע חדש', where: 'שניות 8-14', why: 'יוצר "אזור מת" שגורם לנשירת צופים', evidence: 'מניתוח הפריימים: שינוי ויזואלי מינימלי בין פריים 4-6', recommendation: 'קצר את הסבר האמצע ב-3 שניות. התחל ישירות מהתוצאה במקום מהתהליך.', startTime: 8, endTime: 14, relatedChecks: ['dead_air', 'mid_video_pace'] },
+  ],
+  timeline: [
+    { startTime: 0, endTime: 2.5, category: 'hook', status: 'positive', severity: 'low', confidence: 0.88, title: 'פתיחה חזקה', explanation: 'הפריים הראשון יוצר עניין מיידי ועוצר גלילה' },
+    { startTime: 8, endTime: 14, category: 'pacing', status: 'negative', severity: 'high', confidence: 0.78, title: 'ירידה בקצב', explanation: 'סעיף שאין בו מידע חדש — צופים עלולים לנשור כאן' },
+  ],
+  categories: [
+    makeDemoCategory('understanding', 'הבנה ומסר', 8, 1, 2, 1),
+    makeDemoCategory('hook', 'פתיחה ורושם ראשוני', 12, 2, 4, 4),
+    makeDemoCategory('structure', 'מבנה ומסר', 7, 2, 5, 6),
+    makeDemoCategory('pacing', 'קצב ושמירת תשומת לב', 6, 3, 8, 9),
+    makeDemoCategory('visual', 'ויזואל ומצלמה', 10, 1, 7, 4),
+    makeDemoCategory('lighting', 'תאורה וצבע', 8, 0, 4, 4),
+    makeDemoCategory('editing', 'עריכה', 7, 2, 4, 6),
+    makeDemoCategory('audio', 'דיבור ושמע', 9, 1, 3, 4),
+    makeDemoCategory('music', 'מוזיקה', 4, 1, 2, 7),
+    makeDemoCategory('text', 'טקסט ותוספות', 5, 0, 3, 8),
+    makeDemoCategory('emotion', 'רגש ואותנטיות', 7, 1, 4, 2),
+    makeDemoCategory('engagement', 'מעורבות וסיום', 5, 1, 1, 1),
+  ],
+  checksEvaluated: 0,
+  checksPositive: 0,
+  checksNegative: 0,
+  checksUncertain: 0,
+  checksNotApplicable: 0,
+};
+
+// Compute aggregate counts from demo categories
+(function computeDemoCounts() {
+  DEMO_AUDIT_HE.checksEvaluated = DEMO_AUDIT_HE.categories.reduce((s, c) => s + c.checksEvaluated, 0);
+  DEMO_AUDIT_HE.checksPositive = DEMO_AUDIT_HE.categories.reduce((s, c) => s + c.checksPositive, 0);
+  DEMO_AUDIT_HE.checksNegative = DEMO_AUDIT_HE.categories.reduce((s, c) => s + c.checksNegative, 0);
+  DEMO_AUDIT_HE.checksUncertain = DEMO_AUDIT_HE.categories.reduce((s, c) => s + c.checksUncertain, 0);
+  DEMO_AUDIT_HE.checksNotApplicable = DEMO_AUDIT_HE.categories.reduce((s, c) => s + c.checksNotApplicable, 0);
+})();
+
+export async function analyzeVideoAudit(
+  frameData: VideoFrameData,
+  context: SimpleVideoContext,
+  wvu: WholeVideoUnderstanding,
+  transcriptData: TranscriptData | null | undefined,
+  ocrData: OcrData | null | undefined,
+  audioEvidence: AudioEvidence | null | undefined,
+): Promise<MasterVideoAudit> {
+  if (AI_MODE === 'demo') {
+    return DEMO_AUDIT_HE;
+  }
+  const { analyzeVideoAudit: openaiAudit } = await import('./videoAudit');
+  return openaiAudit(frameData, context, wvu, transcriptData, ocrData, audioEvidence);
 }

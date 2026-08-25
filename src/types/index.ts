@@ -114,6 +114,7 @@ export interface AnalysisResult {
   adaptiveAnalysis?: AdaptiveAnalysis;
   perceptionGap?: PerceptionGap;
   wholeVideoUnderstanding?: WholeVideoUnderstanding;
+  videoAudit?: MasterVideoAudit;
 }
 
 // ─── Video Understanding Engine (Stage 1) ─────────────────────────────────────
@@ -171,6 +172,79 @@ export interface WholeVideoUnderstanding {
   primaryObjective: ContentObjective;
   commercialIntent: boolean;
   emotionalTone: EmotionalTone;
+}
+
+// ─── Master Video Audit Engine ────────────────────────────────────────────────
+
+export type AuditStatus = 'positive' | 'negative' | 'neutral' | 'uncertain' | 'not_applicable';
+export type AuditSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type AuditCategoryId =
+  | 'understanding' | 'hook' | 'structure' | 'pacing'
+  | 'visual' | 'lighting' | 'editing' | 'audio'
+  | 'music' | 'text' | 'emotion' | 'engagement';
+
+export interface AuditStrength {
+  title: string;
+  what: string;
+  where: string | null;
+  why: string;
+  evidence: string;
+  shouldPreserve: boolean;
+  startTime?: number;
+  endTime?: number;
+}
+
+export interface AuditWeakness {
+  title: string;
+  severity: AuditSeverity;
+  confidence: number;
+  what: string;
+  where: string | null;
+  why: string;
+  evidence: string;
+  recommendation: string;
+  startTime?: number;
+  endTime?: number;
+  relatedChecks?: string[];
+}
+
+export interface AuditCategorySummary {
+  id: AuditCategoryId;
+  label: string;
+  overallStatus: 'positive' | 'mixed' | 'negative' | 'uncertain';
+  strengths: AuditStrength[];
+  weaknesses: AuditWeakness[];
+  checksEvaluated: number;
+  checksPositive: number;
+  checksNegative: number;
+  checksUncertain: number;
+  checksNotApplicable: number;
+}
+
+export interface AuditTimelineFinding {
+  startTime: number;
+  endTime: number;
+  category: AuditCategoryId;
+  status: AuditStatus;
+  severity: AuditSeverity;
+  confidence: number;
+  title: string;
+  explanation: string;
+}
+
+export interface MasterVideoAudit {
+  videoSummary: string;
+  highestImpactImprovement: string;
+  overallConfidence: number;
+  strengths: AuditStrength[];
+  weaknesses: AuditWeakness[];
+  timeline: AuditTimelineFinding[];
+  categories: AuditCategorySummary[];
+  checksEvaluated: number;
+  checksPositive: number;
+  checksNegative: number;
+  checksUncertain: number;
+  checksNotApplicable: number;
 }
 
 // ─── Perception Gap Engine (Stage 2) ──────────────────────────────────────────
