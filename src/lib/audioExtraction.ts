@@ -1,5 +1,9 @@
 // Extracts audio from a video File using the Web Audio API and encodes it as a WAV Blob.
 // Zero npm dependencies — WAV is a trivial fixed-header + raw PCM format.
+// Also computes objective audio measurements (RMS, peak, per-second energy) from the
+// same PCM samples before encoding, so callers get signal evidence at zero extra cost.
+
+import type { AudioMeasurements } from '@/types';
 
 const SAMPLE_RATE = 16000;       // Whisper's native rate
 const MAX_DURATION_S = 120;       // cap at 2 min to stay under body size limits
@@ -38,12 +42,67 @@ function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
   return buffer;
 }
 
-export async function extractAudio(file: File): Promise<Blob | null> {
+/**
+ * Compute audio measurements from raw PCM samples.
+ * Pure function — works in Node.js tests with synthetic Float32Array data.
+ */
+export function measureAudioBuffer(
+  channelData: Float32Array,
+  sampleRate: number,
+  durationSec: number,
+): AudioMeasurements {
+  const n = channelData.length;
+  if (n === 0) {
+    return { overallRms: 0, peakAmplitude: 0, clippingDetected: false, perSecondRms: [], durationSec };
+  }
+
+  // Overall RMS and peak — single pass for efficiency
+  let sumSq = 0;
+  let peak = 0;
+  for (let i = 0; i < n; i++) {
+    const abs = Math.abs(channelData[i]);
+    if (abs > peak) peak = abs;
+    sumSq += channelData[i] * channelData[i];
+  }
+  const overallRms = Math.sqrt(sumSq / n);
+
+  // Per-second RMS (1-second windows at the sample rate)
+  const numSeconds = Math.max(1, Math.ceil(durationSec));
+  const perSecondRms: number[] = [];
+  for (let s = 0; s < numSeconds; s++) {
+    const start = s * sampleRate;
+    const end = Math.min((s + 1) * sampleRate, n);
+    if (start >= n) {
+      perSecondRms.push(0);
+      continue;
+    }
+    let secSumSq = 0;
+    for (let i = start; i < end; i++) {
+      secSumSq += channelData[i] * channelData[i];
+    }
+    perSecondRms.push(Math.sqrt(secSumSq / (end - start)));
+  }
+
+  return {
+    overallRms,
+    peakAmplitude: peak,
+    clippingDetected: peak > 0.98,
+    perSecondRms,
+    durationSec,
+  };
+}
+
+export interface AudioExtractionResult {
+  blob: Blob | null;
+  measurements: AudioMeasurements | null;
+}
+
+export async function extractAudio(file: File): Promise<AudioExtractionResult> {
   try {
     const AudioCtx =
       window.AudioContext ||
       (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return null;
+    if (!AudioCtx) return { blob: null, measurements: null };
 
     const arrayBuffer = await file.arrayBuffer();
 
@@ -53,7 +112,7 @@ export async function extractAudio(file: File): Promise<Blob | null> {
       audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
     } catch {
       await tempCtx.close().catch(() => {});
-      return null; // no audio track or unsupported format
+      return { blob: null, measurements: null }; // no audio track or unsupported format
     }
     await tempCtx.close().catch(() => {});
 
@@ -68,10 +127,15 @@ export async function extractAudio(file: File): Promise<Blob | null> {
 
     const rendered = await offlineCtx.startRendering();
     const channelData = rendered.getChannelData(0);
-    const wavBuffer = encodeWAV(channelData, SAMPLE_RATE);
 
-    return new Blob([wavBuffer], { type: 'audio/wav' });
+    // Compute measurements before WAV encoding — reuses the same samples at zero cost
+    const measurements = measureAudioBuffer(channelData, SAMPLE_RATE, capDuration);
+
+    const wavBuffer = encodeWAV(channelData, SAMPLE_RATE);
+    const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+
+    return { blob, measurements };
   } catch {
-    return null;
+    return { blob: null, measurements: null };
   }
 }

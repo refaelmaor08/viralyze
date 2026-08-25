@@ -420,6 +420,50 @@ export interface ViralPotentialAnalysis {
   topImprovement: string;
 }
 
+// ─── Audio Intelligence ───────────────────────────────────────────────────────
+
+/** Measured directly from the PCM samples in the browser. Zero API cost. */
+export interface AudioMeasurements {
+  overallRms: number;        // 0–1, root-mean-square of the full audio
+  peakAmplitude: number;     // 0–1, maximum |sample| value
+  clippingDetected: boolean; // peakAmplitude > 0.98
+  perSecondRms: number[];    // RMS for each 1-second window of audio
+  durationSec: number;
+}
+
+/** Derived server-side from measurements + Whisper timestamps. */
+export type AudioStatus =
+  | 'speech-only'   // speech detected, very low background energy
+  | 'speech-music'  // speech detected + measurable background signal
+  | 'music-only'    // no speech, detectable audio energy → likely music/ambient
+  | 'silence'       // no speech, near-zero audio energy → actual silence
+  | 'unknown';      // audio extraction failed or unmeasured
+
+export type MaskingRisk = 'none' | 'low' | 'medium' | 'high';
+
+export interface AudioEvidence {
+  status: AudioStatus;
+  speechDetected: boolean;
+  musicDetected: boolean | null;       // null = cannot determine from available data
+  transcriptAvailable: boolean;
+  audioIsAvailable: boolean;           // false when browser extraction failed
+
+  measurements: {
+    overallRms: number;
+    peakAmplitude: number;
+    clippingDetected: boolean;
+    speechRms: number | null;          // avg RMS during speech windows (words talking)
+    backgroundRms: number | null;      // avg RMS during non-speech windows
+  } | null;
+
+  balance: {
+    backgroundRatio: number | null;    // backgroundRms / speechRms (0–1+)
+    maskingRisk: MaskingRisk;
+  } | null;
+
+  maskingSegments: Array<{ startSec: number; endSec: number; backgroundRms: number }>;
+}
+
 // ─── Transcript & Audio Analysis (Phase 2) ────────────────────────────────────
 
 export interface TranscriptWord {

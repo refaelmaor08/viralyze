@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive } from '@/lib/aiProvider';
 import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
-import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence } from '@/types';
 
 export const maxDuration = 120;
 
@@ -17,14 +17,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null; ocrData?: OcrData | null; audioExtractionFailed?: boolean };
+    let body: { frameData: VideoFrameData; context: SimpleVideoContext; transcriptData?: TranscriptData | null; ocrData?: OcrData | null; audioExtractionFailed?: boolean; audioMeasurements?: AudioMeasurements | null };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { frameData, context, transcriptData, ocrData, audioExtractionFailed } = body;
+    const { frameData, context, transcriptData, ocrData, audioExtractionFailed, audioMeasurements } = body;
 
     // ── Analysis payload audit log ──────────────────────────────────────────
     console.log('[viralyze:analyze] payload', JSON.stringify({
@@ -96,6 +96,27 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────────────────────────────────────────
 
+    // ── Step 1b: Audio intelligence — evidence from PCM measurements ─────────────
+    // Converts raw AudioMeasurements (computed client-side from the PCM buffer)
+    // into a structured AudioEvidence object using Whisper word timestamps for
+    // speech/background energy separation. Zero additional API cost.
+    const { computeAudioEvidence } = await import('@/lib/audioIntelligence');
+    const audioEvidence: AudioEvidence = computeAudioEvidence(
+      audioMeasurements ?? null,
+      finalTranscriptData,
+      audioExtractionFailed ?? false,
+    );
+    console.log('[viralyze:audio-intelligence]', {
+      status: audioEvidence.status,
+      speechDetected: audioEvidence.speechDetected,
+      musicDetected: audioEvidence.musicDetected,
+      maskingRisk: audioEvidence.balance?.maskingRisk ?? 'n/a',
+      clipping: audioEvidence.measurements?.clippingDetected ?? false,
+      overallRms: audioEvidence.measurements?.overallRms?.toFixed(3) ?? 'n/a',
+      maskingSegments: audioEvidence.maskingSegments.length,
+    });
+    // ────────────────────────────────────────────────────────────────────────────
+
     // ── Step 2: OCR transcript cross-validation (uses validated transcript) ─────
     let finalOcrData = ocrData ?? null;
     if (finalOcrData?.hasText && finalTranscriptData?.hasSpeech) {
@@ -117,7 +138,7 @@ export async function POST(req: NextRequest) {
     // analyzeVideo uses all frames (first 3 high detail) as the primary quality signal.
     const stage1Start = Date.now();
     const [result, understanding] = await Promise.all([
-      analyzeVideo(frameData, context, finalTranscriptData, finalOcrData, audioExtractionFailed ?? false),
+      analyzeVideo(frameData, context, finalTranscriptData, finalOcrData, audioExtractionFailed ?? false, audioEvidence),
       understandVideo(frameData, context.language).catch((e: unknown) => {
         console.error('[viralyze:understanding] failed:', e instanceof Error ? e.message : String(e));
         return null;
@@ -219,6 +240,9 @@ export async function POST(req: NextRequest) {
         whisperLanguage: finalTranscriptData?.language ?? null,
         transcriptValidated: finalTranscriptData?.transcriptValidated ?? false,
         transcriptCorrections: finalTranscriptData?.validationLog?.length ?? 0,
+        audioStatus: audioEvidence.status,
+        maskingRisk: audioEvidence.balance?.maskingRisk ?? 'n/a',
+        clipping: audioEvidence.measurements?.clippingDetected ?? false,
       },
     }));
     // ────────────────────────────────────────────────────────────────────────────

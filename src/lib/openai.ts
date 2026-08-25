@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData, ViralPotentialAnalysis, ViralDimension, OcrData } from '@/types';
+import { SimpleVideoContext, VideoFrameData, AnalysisResult, CompetitorAnalysis, CreatorAssistantResponse, VideoUnderstanding, PerceptionGap, GapItem, ViewerPsychology, PsychologyMetric, TimelineAnalysis, TimelineMoment, MomentQuality, MomentIssue, AdaptiveAnalysis, AdaptiveMetric, AnalysisProfileType, Recommendations, RecommendationSection, Recommendation, RecommendationPriority, RecommendationCategoryType, LanguageSafetyAnalysis, LanguageSignal, PlatformLanguageImpact, LanguageSignalEffect, LanguageSignalCategory, ContentSafetyLevel, TranscriptData, ViralPotentialAnalysis, ViralDimension, OcrData, AudioEvidence } from '@/types';
 import { buildOcrSection } from '@/lib/ocrProcessor';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -213,12 +213,14 @@ This does NOT mean the video is silent. The video may contain speech, music, or 
     return `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AUDIO: NO SPEECH DETECTED
-Whisper speech recognition confirmed: this video contains no spoken words — it is silent or music/ambient only.
+Whisper speech recognition confirmed: no spoken words in this video.
+Whether the audio contains music, ambient sound, or is near-silent is determined in the AUDIO INTELLIGENCE section below.
 ▸ Analyze purely from visual frames and any OCR text.
 ▸ Hook: visual and text signals only — no spoken hook possible.
 ▸ Pacing: based on visual rhythm — no speech cadence to consider.
 ▸ CTA: only if visible as on-screen text — otherwise absent.
-▸ In Hebrew output: note this in executiveSummary naturally.
+▸ Do NOT claim this video is silent — refer to the AUDIO INTELLIGENCE section for the audio status.
+▸ In Hebrew output: note the absence of speech naturally in executiveSummary.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
   }
 
@@ -273,7 +275,112 @@ SPOKEN CONTENT INSTRUCTIONS — mandatory:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 
-function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null, ocrData?: OcrData | null, audioExtractionFailed = false): string {
+function pct(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`;
+}
+
+export function buildAudioSection(evidence: AudioEvidence | null | undefined, isHe: boolean): string {
+  if (!evidence || !evidence.audioIsAvailable) return '';
+
+  const { status, speechDetected, musicDetected, measurements, balance, maskingSegments } = evidence;
+  const m = measurements;
+  const b = balance;
+
+  // ── Format measurements ────────────────────────────────────────────────────
+  const levelLine = m
+    ? `- Overall signal level: ${m.overallRms.toFixed(3)} RMS (${
+        m.overallRms < 0.01 ? 'near-silent' :
+        m.overallRms < 0.05 ? 'quiet' :
+        m.overallRms < 0.15 ? 'moderate' :
+        m.overallRms < 0.35 ? 'normal' : 'loud'
+      })`
+    : '';
+  const peakLine = m
+    ? `- Peak amplitude: ${m.peakAmplitude.toFixed(3)}${m.clippingDetected ? ' ⚠ CLIPPING DETECTED' : ' (no clipping)'}`
+    : '';
+  const speechLevelLine = (m?.speechRms !== null && m?.speechRms !== undefined)
+    ? `- Speech level (while talking): ${m.speechRms.toFixed(3)} RMS`
+    : '';
+  const bgLevelLine = (m?.backgroundRms !== null && m?.backgroundRms !== undefined)
+    ? `- Background level (non-speech windows): ${m.backgroundRms.toFixed(3)} RMS`
+    : '';
+  const ratioLine = (b?.backgroundRatio !== null && b?.backgroundRatio !== undefined && b.maskingRisk !== 'none')
+    ? `- Background-to-speech ratio: ${pct(b.backgroundRatio)} → ${b.maskingRisk.toUpperCase()} masking risk`
+    : (b?.backgroundRatio !== null && b?.backgroundRatio !== undefined)
+    ? `- Background-to-speech ratio: ${pct(b.backgroundRatio)} → no masking risk`
+    : '';
+  const segmentsLine = maskingSegments.length > 0
+    ? `- High-background windows: ${maskingSegments.map((s) => `${s.startSec}s–${s.endSec}s`).join(', ')}`
+    : '';
+
+  // ── Status summary ─────────────────────────────────────────────────────────
+  const statusSummary =
+    status === 'speech-only'  ? 'Speech only — no detectable background music' :
+    status === 'speech-music' ? 'Speech + background audio detected' :
+    status === 'music-only'   ? 'Music/ambient only — no spoken words' :
+    status === 'silence'      ? 'Near-silence — very low audio energy' :
+    'Audio status: unknown';
+
+  // ── Gating rules ───────────────────────────────────────────────────────────
+  const rules: string[] = [];
+
+  // Rule A-1: No-music guard
+  if (musicDetected === false && speechDetected) {
+    rules.push(`▸ A-1 NO MUSIC: Measurements confirm very low background energy. Do NOT recommend adding, removing, or changing music. You may note as a strength that the speaker's voice is clean and unobstructed.`);
+  }
+  if (!speechDetected && musicDetected === false) {
+    rules.push(`▸ A-1 SILENCE CONFIRMED: Audio energy near-zero — this video appears to be silent or contain only imperceptible sound. Note this as a creative constraint, not necessarily a weakness.`);
+  }
+  if (!speechDetected && musicDetected === true) {
+    rules.push(`▸ A-1 MUSIC-ONLY: No speech detected but audio energy is present — this is a music-only or ambient video. Analyze purely from visual frames. Do NOT claim speech is absent as a weakness if the video's purpose is music-driven.`);
+  }
+
+  // Rule A-2: Music present, balance OK
+  if (musicDetected === true && speechDetected && (b?.maskingRisk === 'none' || b?.maskingRisk === 'low')) {
+    rules.push(`▸ A-2 BALANCE OK: Background-to-speech ratio is ${b?.maskingRisk ?? 'none'}. Speech is clearly dominant. Do NOT recommend changing the audio balance. Consider noting as a strength that speech remains clear above background music.`);
+  }
+
+  // Rule A-3: Medium/high masking risk
+  if (musicDetected === true && b?.maskingRisk === 'medium') {
+    rules.push(`▸ A-3 BALANCE MEDIUM: Background music is at ${pct(b.backgroundRatio ?? 0)} of speech level — noticeable but not dominant. ${isHe ? 'ניתן להציע הנמכה קלה של המוזיקה.' : 'You may suggest a slight music level reduction.'} Reference the ratio in the recommendation.`);
+  }
+  if (musicDetected === true && b?.maskingRisk === 'high') {
+    rules.push(`▸ A-3 BALANCE HIGH: Background-to-speech ratio ${pct(b?.backgroundRatio ?? 0)} — music is competing with speech. ${isHe ? 'זו בעיה אמיתית — המלץ על הנמכת המוזיקה כדי ששמיעת הדיבור תישמר.' : 'This is a real problem — recommend reducing background music so speech remains intelligible.'}${segmentsLine ? ` Focus on: ${maskingSegments.map((s) => `${s.startSec}s–${s.endSec}s`).join(', ')}.` : ''}`);
+  }
+
+  // Rule A-4: Clipping
+  if (m?.clippingDetected) {
+    rules.push(`▸ A-4 CLIPPING: Peak amplitude ${m.peakAmplitude.toFixed(3)} exceeds 0.98 — audio was recorded or processed at excessive gain. ${isHe ? 'ציין כבעיה באיכות האודיו עם המלצה להוריד רמת הקלטה.' : 'Note as an audio quality issue — recommend reducing recording or gain level.'}`);
+  }
+
+  // Rule A-5: Music mood (only when music is present)
+  if (musicDetected === true) {
+    rules.push(`▸ A-5 MUSIC MOOD: Based on the video's visual energy (editing pace, emotional tone in frames, transcript content), assess whether the background audio appears to SUPPORT or CONFLICT with the video's emotional register. Use "appears to support" / "may conflict with" — never certainty. Only surface a music-change recommendation if visual evidence strongly suggests a tonal mismatch (e.g. fast energetic frames + very calm music, or serious emotional speech + clearly playful sound). When uncertain: stay silent.`);
+    rules.push(`▸ A-6 MUSIC STRENGTH: When the background audio appears consistent with the video's tone — note this as a strength (e.g. "${isHe ? 'המוזיקה תומכת באווירה הרגשית' : 'music supports the emotional tone'}.").`);
+  }
+
+  // Rule A-7: Unknown status
+  if (!m) {
+    rules.push(`▸ A-7 NO MEASUREMENTS: Audio measurements were unavailable. Do NOT make specific claims about audio levels, music presence, or balance. Use "audio data was limited for this analysis" if mentioning audio.`);
+  }
+
+  const dataLines = [levelLine, peakLine, speechLevelLine, bgLevelLine, ratioLine, segmentsLine]
+    .filter(Boolean)
+    .join('\n');
+
+  return `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AUDIO INTELLIGENCE (measured from actual PCM signal):
+- Audio status: ${statusSummary}
+${dataLines}
+
+AUDIO ANALYSIS RULES — mandatory:
+▸ A-0 EVIDENCE GATE: Surface audio criticism ONLY when measurements confirm a problem. Accuracy over quantity. A video with good audio is allowed to receive zero audio weaknesses.
+${rules.join('\n')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, transcriptData?: TranscriptData | null, ocrData?: OcrData | null, audioExtractionFailed = false, audioEvidence?: AudioEvidence | null): string {
   const dur = Math.round(frameData.duration);
   const durFormatted = formatSec(dur);
   const isHe = context.language === 'hebrew';
@@ -318,6 +425,7 @@ function buildPrompt(frameData: VideoFrameData, context: SimpleVideoContext, tra
     : '';
 
   const transcriptSection = buildTranscriptSection(transcriptData, isHe, audioExtractionFailed);
+  const audioSection = buildAudioSection(audioEvidence, isHe);
   const ocrSection = ocrData ? buildOcrSection(ocrData, dur, isHe) : '';
 
   const lowFrameWarning = frameCount < 5
@@ -341,7 +449,7 @@ MEASURED VIDEO SIGNALS (extracted client-side before AI analysis — use these e
 
 When scoring "pacing": base it on the measured ${frameData.editingPace} pace (${frameData.cutsPerSecond.toFixed(2)} cuts/sec). Do not contradict these measurements.
 When scoring "hookStrength": you have dense frame coverage of the first 3 seconds — describe exactly what you see in those frames.
-${transcriptSection}${ocrSection}
+${transcriptSection}${audioSection}${ocrSection}
 ${contextualInstructions ? `CONSTRAINTS:\n${contextualInstructions}\n` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 1 — DURATION (ABSOLUTE, NO EXCEPTIONS)
@@ -771,14 +879,15 @@ export async function analyzeVideo(
   context: SimpleVideoContext,
   transcriptData?: TranscriptData | null,
   ocrData?: OcrData | null,
-  audioExtractionFailed = false
+  audioExtractionFailed = false,
+  audioEvidence?: AudioEvidence | null,
 ): Promise<AnalysisResult> {
   // Hook frames (first 3) get high detail so GPT can actually distinguish between
   // different videos at the critical opening. Low detail (85 tokens) makes all
   // talking-head videos look identical; high detail (1105 tokens) shows expressions,
   // text overlays, lighting and movement that differentiate content.
   const content: ChatCompletionContentPart[] = [
-    { type: 'text', text: buildPrompt(frameData, context, transcriptData, ocrData, audioExtractionFailed) },
+    { type: 'text', text: buildPrompt(frameData, context, transcriptData, ocrData, audioExtractionFailed, audioEvidence) },
     ...frameData.frames.map(
       (frame, idx): ChatCompletionContentPart => ({
         type: 'image_url',

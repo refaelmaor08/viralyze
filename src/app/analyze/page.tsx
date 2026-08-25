@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Zap, AlertCircle, LayoutDashboard, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { SimpleVideoContext, AnalysisResult, VideoFrameData, TranscriptData, OcrData, VideoMetadata } from '@/types';
+import { SimpleVideoContext, AnalysisResult, VideoFrameData, TranscriptData, OcrData, VideoMetadata, AudioMeasurements } from '@/types';
 import AuthGuard from '@/components/ui/AuthGuard';
 import { saveFullResult, saveToHistory } from '@/lib/history';
 import { useAuth } from '@/lib/authContext';
@@ -44,6 +44,7 @@ function AnalyzeContent() {
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoFingerprintRef = useRef<string | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
+  const audioMeasurementsRef = useRef<AudioMeasurements | null>(null);
 
   const { user, plan, remainingAnalyses } = useAuth();
   const isPaid = plan.id !== 'free';
@@ -136,11 +137,15 @@ function AnalyzeContent() {
         extractFrames(selectedFile, (current, total) => setFrameProgress({ current, total })),
         Promise.race([
           extractAudio(selectedFile),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
-        ]).then((blob) => {
+          new Promise<{ blob: null; measurements: null }>((resolve) =>
+            setTimeout(() => resolve({ blob: null, measurements: null }), 20_000),
+          ),
+        ]).then(({ blob, measurements }) => {
           audioBlobRef.current = blob;
+          audioMeasurementsRef.current = measurements;
         }).catch(() => {
           audioBlobRef.current = null;
+          audioMeasurementsRef.current = null;
         }),
       ]);
 
@@ -300,6 +305,7 @@ function AnalyzeContent() {
     setDurationError('');
     setPrepWarning('');
     audioBlobRef.current = null;
+    audioMeasurementsRef.current = null;
   }, [clearSafetyTimer]);
 
   const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && (IS_UNLIMITED || remainingAnalyses > 0);
@@ -457,6 +463,7 @@ function AnalyzeContent() {
           ocrData,
           context: analysisContext,
           audioExtractionFailed: audioBlobRef.current === null,
+          audioMeasurements: audioMeasurementsRef.current ?? null,
         }),
       });
 
