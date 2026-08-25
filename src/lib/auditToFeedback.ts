@@ -22,6 +22,8 @@ import type {
   AuditStrength,
   AuditWeakness,
   AuditCategoryId,
+  FixabilityLabel,
+  VideoFixRecommendation,
 } from '@/types';
 
 // ─── Time formatting ──────────────────────────────────────────────────────────
@@ -246,6 +248,68 @@ export function auditToFeedback(audit: MasterVideoAudit): AnalysisFeedback {
     genericElements,
     strongElements,
   };
+}
+
+// ─── Fixability inference ─────────────────────────────────────────────────────
+
+function inferFixability(catId: AuditCategoryId, w: AuditWeakness): FixabilityLabel {
+  // Editing-only changes — no reshoot needed
+  if (catId === 'editing' || catId === 'text' || catId === 'music') return 'fix_now';
+  // Pacing/audio: usually a trim or mix adjustment
+  if (catId === 'pacing' || catId === 'audio') return 'fix_now';
+  // Hook + specific timestamp → trim existing footage; without timestamp → need new opening
+  if (catId === 'hook') return w.startTime !== undefined ? 'fix_now' : 'easy_reshoot';
+  // Structure with a specific moment → can trim; global structure → next video
+  if (catId === 'structure') return w.startTime !== undefined ? 'fix_now' : 'next_video';
+  // Visual/lighting require a reshoot
+  if (catId === 'visual' || catId === 'lighting') return 'easy_reshoot';
+  // Emotional authenticity is long-term advice
+  return 'next_video';
+}
+
+// ─── Structured fix recommendations for the new PrioritizedFixesPanel ─────────
+
+export function auditToFixRecommendations(audit: MasterVideoAudit): VideoFixRecommendation[] {
+  const SEVERITY_SCORE: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+
+  // Collect every weakness with its category, keeping the category ID for fixability
+  const pool: Array<{ w: AuditWeakness; catId: AuditCategoryId }> = [];
+  for (const cat of audit.categories) {
+    for (const w of cat.weaknesses) {
+      if (w.confidence >= 0.6) pool.push({ w, catId: cat.id });
+    }
+  }
+
+  // Sort: severity desc → confidence desc → has-timestamp (fix_now first)
+  pool.sort((a, b) => {
+    const sevDiff = (SEVERITY_SCORE[b.w.severity] ?? 0) - (SEVERITY_SCORE[a.w.severity] ?? 0);
+    if (sevDiff !== 0) return sevDiff;
+    const confDiff = b.w.confidence - a.w.confidence;
+    if (Math.abs(confDiff) > 0.05) return confDiff;
+    // prefer findings with timestamps (more actionable)
+    return (b.w.startTime !== undefined ? 1 : 0) - (a.w.startTime !== undefined ? 1 : 0);
+  });
+
+  const fixes: VideoFixRecommendation[] = [];
+  const seenTitles = new Set<string>();
+
+  for (const { w, catId } of pool) {
+    if (fixes.length >= 3) break;
+    const titleKey = w.title.slice(0, 40).toLowerCase();
+    if (seenTitles.has(titleKey)) continue;
+    seenTitles.add(titleKey);
+
+    const timeRange = fmtRange(w.startTime, w.endTime);
+    fixes.push({
+      what: normalizeHebrew(w.title),
+      where: timeRange || (w.where ? normalizeHebrew(w.where) : null),
+      why: normalizeHebrew(w.why),
+      how: normalizeHebrew(w.recommendation),
+      fixability: inferFixability(catId, w),
+    });
+  }
+
+  return fixes;
 }
 
 // ─── Audit timeline → legacy TimelineEntry format ─────────────────────────────

@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from 'vitest';
-import { auditToFeedback, auditToTimeline, normalizeHebrew, fmtRange } from '@/lib/auditToFeedback';
+import { auditToFeedback, auditToTimeline, auditToFixRecommendations, normalizeHebrew, fmtRange } from '@/lib/auditToFeedback';
 import type { MasterVideoAudit, AuditStrength, AuditWeakness, AuditCategorySummary, AuditTimelineFinding } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -356,4 +356,174 @@ test('empty audit produces empty feedback arrays (no crashes)', () => {
   expect(feedback.immediateChanges).toHaveLength(1); // highestImpactImprovement
   const timeline = auditToTimeline(audit);
   expect(timeline).toHaveLength(0);
+});
+
+// ─── auditToFixRecommendations ────────────────────────────────────────────────
+
+test('auditToFixRecommendations returns max 3 fixes', () => {
+  const manyWeaknesses = Array.from({ length: 6 }, (_, i) =>
+    makeWeakness({ title: `בעיה ${i}`, severity: 'high', confidence: 0.8 }),
+  );
+  const audit = makeAudit({
+    categories: [
+      makeCategory('editing', { weaknesses: manyWeaknesses }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes.length).toBeLessThanOrEqual(3);
+});
+
+test('auditToFixRecommendations: editing category → fix_now fixability', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('editing', {
+        weaknesses: [makeWeakness({ severity: 'high', confidence: 0.8, title: 'עריכה ארוכה מדי' })],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes.length).toBeGreaterThan(0);
+  expect(fixes[0].fixability).toBe('fix_now');
+});
+
+test('auditToFixRecommendations: visual category → easy_reshoot fixability', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('visual', {
+        weaknesses: [makeWeakness({ severity: 'high', confidence: 0.8, title: 'זווית צילום לא טובה' })],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes.length).toBeGreaterThan(0);
+  expect(fixes[0].fixability).toBe('easy_reshoot');
+});
+
+test('auditToFixRecommendations: hook with timestamp → fix_now (trim existing footage)', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('hook', {
+        weaknesses: [makeWeakness({ severity: 'critical', confidence: 0.9, title: 'פתיחה ארוכה', startTime: 0, endTime: 3 })],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes.length).toBeGreaterThan(0);
+  expect(fixes[0].fixability).toBe('fix_now');
+});
+
+test('auditToFixRecommendations: hook without timestamp → easy_reshoot', () => {
+  const weakness = makeWeakness({ severity: 'critical', confidence: 0.9, title: 'פתיחה חלשה' });
+  // No startTime
+  delete (weakness as Record<string, unknown>).startTime;
+  delete (weakness as Record<string, unknown>).endTime;
+  const audit = makeAudit({
+    categories: [
+      makeCategory('hook', { weaknesses: [weakness] }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes.length).toBeGreaterThan(0);
+  expect(fixes[0].fixability).toBe('easy_reshoot');
+});
+
+test('auditToFixRecommendations: emotion category → next_video', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('emotion', {
+        weaknesses: [makeWeakness({ severity: 'high', confidence: 0.8, title: 'חוסר אותנטיות' })],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes.length).toBeGreaterThan(0);
+  expect(fixes[0].fixability).toBe('next_video');
+});
+
+test('auditToFixRecommendations: critical severity ranks above high', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('pacing', {
+        weaknesses: [
+          makeWeakness({ title: 'בעיה גבוהה', severity: 'high', confidence: 0.8 }),
+        ],
+      }),
+      makeCategory('hook', {
+        weaknesses: [
+          makeWeakness({ title: 'בעיה קריטית', severity: 'critical', confidence: 0.9 }),
+        ],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes[0].what).toContain('קריטי');
+});
+
+test('auditToFixRecommendations: low confidence weaknesses excluded', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('editing', {
+        weaknesses: [
+          makeWeakness({ severity: 'critical', confidence: 0.4, title: 'בעיה לא בטוחה' }),
+        ],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes).toHaveLength(0);
+});
+
+test('auditToFixRecommendations: each fix has what + why + how fields', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('pacing', {
+        weaknesses: [
+          makeWeakness({
+            severity: 'high',
+            confidence: 0.8,
+            title: 'קצב איטי',
+            what: 'אין התפתחות חדשה',
+            why: 'הצופה עלול לאבד עניין',
+            recommendation: 'לקצר ב-2 שניות',
+          }),
+        ],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes[0].what).toBeTruthy();
+  expect(fixes[0].why).toBeTruthy();
+  expect(fixes[0].how).toBeTruthy();
+});
+
+test('auditToFixRecommendations: duplicate titles deduplicated', () => {
+  const w1 = makeWeakness({ title: 'אותה בעיה', severity: 'high', confidence: 0.8 });
+  const w2 = makeWeakness({ title: 'אותה בעיה', severity: 'high', confidence: 0.8 });
+  const audit = makeAudit({
+    categories: [
+      makeCategory('editing', { weaknesses: [w1, w2] }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes).toHaveLength(1);
+});
+
+test('auditToFixRecommendations: empty audit returns empty array', () => {
+  const fixes = auditToFixRecommendations(makeAudit());
+  expect(fixes).toHaveLength(0);
+});
+
+test('auditToFixRecommendations: time range included in where when available', () => {
+  const audit = makeAudit({
+    categories: [
+      makeCategory('pacing', {
+        weaknesses: [
+          makeWeakness({ severity: 'high', confidence: 0.8, startTime: 5, endTime: 8 }),
+        ],
+      }),
+    ],
+  });
+  const fixes = auditToFixRecommendations(audit);
+  expect(fixes[0].where).toContain('0:05');
+  expect(fixes[0].where).toContain('0:08');
 });

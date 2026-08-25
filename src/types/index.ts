@@ -176,6 +176,16 @@ export interface WholeVideoUnderstanding {
 
 // ─── Master Video Audit Engine ────────────────────────────────────────────────
 
+export type FixabilityLabel = 'fix_now' | 'easy_reshoot' | 'next_video';
+
+export interface VideoFixRecommendation {
+  what: string;
+  where: string | null;
+  why: string;
+  how: string;
+  fixability: FixabilityLabel;
+}
+
 export type AuditStatus = 'positive' | 'negative' | 'neutral' | 'uncertain' | 'not_applicable';
 export type AuditSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type AuditCategoryId =
