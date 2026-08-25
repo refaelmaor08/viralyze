@@ -141,6 +141,20 @@ export interface VideoUnderstanding {
   confidence: number;
 }
 
+// ─── Content Understanding (Auto-derived, supersedes user questionnaire) ──────
+
+export type ContentObjective = 'entertain' | 'inform' | 'persuade' | 'inspire' | 'sell' | 'promote';
+export type EmotionalTone = 'positive' | 'neutral' | 'negative' | 'energetic' | 'calm' | 'humorous';
+export type CTAExpectation = 'none' | 'soft' | 'explicit';
+
+export interface ContentUnderstanding extends VideoUnderstanding {
+  emotionalTone: EmotionalTone;
+  primaryObjective: ContentObjective;
+  commercialIntent: boolean;
+  likelyAudience: string;
+  ctaExpectation: CTAExpectation;
+}
+
 // ─── Perception Gap Engine (Stage 2) ──────────────────────────────────────────
 
 export type MismatchSeverity = 'low' | 'medium' | 'high';

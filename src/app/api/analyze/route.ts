@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive } from '@/lib/aiProvider';
+import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, deriveContentUnderstanding } from '@/lib/aiProvider';
 import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
-import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence } from '@/types';
+import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence, ContentUnderstanding } from '@/types';
 
 export const maxDuration = 120;
 
@@ -24,7 +24,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { frameData, context, transcriptData, ocrData, audioExtractionFailed, audioMeasurements } = body;
+    const { frameData, transcriptData, ocrData, audioExtractionFailed, audioMeasurements } = body;
+    // Platform is optional — default to instagram when not provided
+    const context: SimpleVideoContext = body.context?.platforms?.length
+      ? body.context
+      : { ...body.context, platforms: ['instagram'] };
 
     // ── Analysis payload audit log ──────────────────────────────────────────
     console.log('[viralyze:analyze] payload', JSON.stringify({
@@ -56,10 +60,6 @@ export async function POST(req: NextRequest) {
 
     if (frameData.frames.length < 5) {
       console.warn(`[viralyze:analyze] LOW FRAME COUNT: ${frameData.frames.length} frames — video format may be unsupported (HEVC?) or extraction timed out`);
-    }
-
-    if (!context?.platforms?.length) {
-      return NextResponse.json({ error: 'יש לבחור לפחות פלטפורמה אחת' }, { status: 400 });
     }
 
     // ── Pipeline debug log ──────────────────────────────────────────────────────
@@ -144,18 +144,37 @@ export async function POST(req: NextRequest) {
         return null;
       }),
     ]);
+    let contentUnderstanding: ContentUnderstanding | null = null;
+    if (understanding) {
+      result.understanding = understanding;
+      // Derive ContentUnderstanding from VideoUnderstanding + transcript + OCR + audio.
+      // Zero API cost — pure function. Replaces user-provided questionnaire fields.
+      contentUnderstanding = deriveContentUnderstanding(
+        understanding,
+        finalTranscriptData,
+        finalOcrData,
+        audioEvidence,
+      );
+    }
+
     console.log('[viralyze:stage1]', {
       durationMs: Date.now() - stage1Start,
       frameCount: frameData.frames.length,
       understandingType: understanding?.primaryType ?? 'failed',
+      contentObjective: contentUnderstanding?.primaryObjective ?? 'n/a',
+      commercialIntent: contentUnderstanding?.commercialIntent ?? false,
     });
 
-    if (understanding) {
-      result.understanding = understanding;
+    if (contentUnderstanding) {
       console.log('[viralyze:understanding]', {
-        primaryType: understanding.primaryType,
-        confidence: understanding.confidence,
-        creatorIntent: understanding.creatorIntent?.slice(0, 100),
+        primaryType: contentUnderstanding.primaryType,
+        confidence: contentUnderstanding.confidence,
+        creatorIntent: contentUnderstanding.creatorIntent?.slice(0, 100),
+        primaryObjective: contentUnderstanding.primaryObjective,
+        emotionalTone: contentUnderstanding.emotionalTone,
+        commercialIntent: contentUnderstanding.commercialIntent,
+        ctaExpectation: contentUnderstanding.ctaExpectation,
+        likelyAudience: contentUnderstanding.likelyAudience,
       });
     }
     // ────────────────────────────────────────────────────────────────────────────
@@ -168,10 +187,12 @@ export async function POST(req: NextRequest) {
     let viralAnalysis: ViralPotentialAnalysis;
     let adaptiveResult = null;
 
-    if (understanding) {
+    // Pass ContentUnderstanding (superset of VideoUnderstanding) to Stage 2 when available.
+    const stage2Understanding = contentUnderstanding ?? understanding;
+    if (stage2Understanding) {
       [viralAnalysis, adaptiveResult] = await Promise.all([
-        analyzeViralPotential(frameData, context, finalTranscriptData, audioExtractionFailed ?? false, understanding),
-        analyzeAdaptive(frameData, context, understanding).catch((e: unknown) => {
+        analyzeViralPotential(frameData, context, finalTranscriptData, audioExtractionFailed ?? false, stage2Understanding),
+        analyzeAdaptive(frameData, context, stage2Understanding).catch((e: unknown) => {
           console.error('[viralyze:adaptive] failed:', e instanceof Error ? e.message : String(e));
           return null;
         }),

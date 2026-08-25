@@ -16,6 +16,11 @@ import type {
   SimpleVideoContext,
   VideoFrameData,
   VideoUnderstanding,
+  ContentUnderstanding,
+  ContentObjective,
+  EmotionalTone,
+  CTAExpectation,
+  ContentTypeDetected,
   PerceptionGap,
   ViewerPsychology,
   TimelineAnalysis,
@@ -1714,4 +1719,101 @@ export async function analyzeViralPotential(
   }
   const { analyzeViralPotential: openaiViral } = await import('./openai');
   return openaiViral(frameData, context, transcriptData, audioExtractionFailed, videoUnderstanding);
+}
+
+// ─── Automatic Content Understanding ─────────────────────────────────────────
+// Pure function — zero API calls. Derives ContentUnderstanding from existing
+// evidence (VideoUnderstanding from Stage 1, transcript, OCR, audio).
+// Replaces user-provided questionnaire fields (contentType, goals, editability).
+
+const OBJECTIVE_MAP: Record<ContentTypeDetected, ContentObjective> = {
+  'advertisement':    'sell',
+  'showcase':         'sell',
+  'luxury-branding':  'sell',
+  'ugc':              'persuade',
+  'review':           'persuade',
+  'personal-branding':'promote',
+  'cinematic-edit':   'inspire',
+  'storytelling':     'inspire',
+  'emotional':        'inspire',
+  'educational':      'inform',
+  'tutorial':         'inform',
+  'trend-content':    'entertain',
+  'organic-tiktok':   'entertain',
+  'entertainment':    'entertain',
+};
+
+const AUDIENCE_MAP: Record<ContentTypeDetected, string> = {
+  'advertisement':    'Potential buyers / general consumers',
+  'showcase':         'Interested shoppers / potential buyers',
+  'luxury-branding':  'Affluent consumers / luxury market',
+  'ugc':              'Peers in the same niche / community',
+  'review':           'Product researchers / buyers',
+  'personal-branding':'Professionals / aspiring creators',
+  'cinematic-edit':   'Visual content enthusiasts',
+  'storytelling':     'General audience / emotional content consumers',
+  'emotional':        'General audience / empathy-driven viewers',
+  'educational':      'Learners / topic-interested viewers',
+  'tutorial':         'DIY / skill-learning audience',
+  'trend-content':    'Social media users following current trends',
+  'organic-tiktok':   'Short-form native audience (TikTok / Reels)',
+  'entertainment':    'General entertainment audience',
+};
+
+// Keywords that constitute meaningful commercial evidence (offer/price/CTA).
+const COMMERCIAL_RE = /מחיר|קנ[הי]|הזמן|השג|הירשמ|הי[ר]ש[מ]|[₪$][\d,]+|\d+%\s*הנח|sale|buy|order|price|discount|shop|link in bio|swipe up|promo|checkout|add to cart|שילמ|payment/i;
+
+function detectEmotionalTone(
+  understanding: VideoUnderstanding,
+  transcript: string,
+): EmotionalTone {
+  const type = understanding.primaryType;
+  if (type === 'entertainment' || type === 'trend-content') return 'humorous';
+  if (type === 'emotional' || type === 'storytelling') return 'positive';
+  if (type === 'cinematic-edit') return 'energetic';
+  if (type === 'educational' || type === 'tutorial') return 'calm';
+
+  // Fallback: scan transcript keywords
+  const t = transcript.toLowerCase();
+  if (/😂|🤣|haha|כיף|מצחיק|funny|humor/i.test(t)) return 'humorous';
+  if (/❤️|💕|מרגש|השראה|love|inspir/i.test(t)) return 'positive';
+  if (/🔥|אנרגי|pump|energy|excited/i.test(t)) return 'energetic';
+  return 'neutral';
+}
+
+export function deriveContentUnderstanding(
+  understanding: VideoUnderstanding,
+  transcriptData: TranscriptData | null | undefined,
+  ocrData: { segments?: Array<{ text: string }> } | null | undefined,
+  _audioEvidence?: AudioEvidence | null,
+): ContentUnderstanding {
+  const transcript = transcriptData?.transcript ?? '';
+  const ocrText = (ocrData?.segments ?? []).map((s) => s.text).join(' ');
+  const combinedText = `${transcript} ${ocrText}`.trim();
+
+  const primaryObjective: ContentObjective = OBJECTIVE_MAP[understanding.primaryType] ?? 'entertain';
+  const likelyAudience: string = AUDIENCE_MAP[understanding.primaryType] ?? 'General audience';
+
+  // Commercial intent requires explicit evidence — offer/price/booking CTA must
+  // appear in transcript or OCR. Type alone (e.g. 'advertisement') is not enough
+  // because misclassification would produce false-positive sales recommendations.
+  const hasCommercialEvidence = COMMERCIAL_RE.test(combinedText);
+  const isCommercialType = ['advertisement', 'showcase', 'luxury-branding'].includes(understanding.primaryType);
+  const commercialIntent = hasCommercialEvidence || (isCommercialType && combinedText.length > 20);
+
+  const ctaExpectation: CTAExpectation =
+    commercialIntent ? 'explicit'
+    : ['advertisement', 'showcase', 'personal-branding', 'luxury-branding'].includes(understanding.primaryType) ? 'soft'
+    : 'none';
+
+  const emotionalTone: EmotionalTone = detectEmotionalTone(understanding, combinedText);
+
+  return {
+    ...understanding,
+    emotionalTone,
+    primaryObjective,
+    commercialIntent,
+    likelyAudience,
+    ctaExpectation,
+  };
 }

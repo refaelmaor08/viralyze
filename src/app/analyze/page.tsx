@@ -14,7 +14,6 @@ import { incrementAnalyses } from '@/lib/analyses';
 import { formatDurationLimit } from '@/lib/plans';
 import { getVideoFingerprint, getCachedResult, setCachedResult } from '@/lib/videoCache';
 import { UNLIMITED_TEST_MODE as IS_UNLIMITED } from '@/lib/testMode';
-import PreAnalysisFlow from '@/components/analyze/PreAnalysisFlow';
 import ScanningScreen from '@/components/analyze/ScanningScreen';
 
 const IS_DEMO = process.env.NEXT_PUBLIC_AI_MODE === 'demo';
@@ -23,11 +22,11 @@ const VideoUploader = dynamic(() => import('@/components/analyze/VideoUploader')
 const PlatformPicker = dynamic(() => import('@/components/analyze/PlatformPicker'), { ssr: false });
 const AnalysisHistory = dynamic(() => import('@/components/analyze/AnalysisHistory'), { ssr: false });
 
-type Phase = 'preanalysis' | 'form' | 'scanning' | 'error';
+type Phase = 'form' | 'scanning' | 'error';
 
 function AnalyzeContent() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('preanalysis');
+  const [phase, setPhase] = useState<Phase>('form');
   const [file, setFile] = useState<File | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [frameProgress, setFrameProgress] = useState<{ current: number; total: number } | null>(null);
@@ -308,7 +307,7 @@ function AnalyzeContent() {
     audioMeasurementsRef.current = null;
   }, [clearSafetyTimer]);
 
-  const canAnalyze = file && !durationError && (context.platforms?.length ?? 0) > 0 && framesReady && (IS_UNLIMITED || remainingAnalyses > 0);
+  const canAnalyze = file && !durationError && framesReady && (IS_UNLIMITED || remainingAnalyses > 0);
 
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze) return;
@@ -344,10 +343,8 @@ function AnalyzeContent() {
       if (IS_DEMO) {
         const { getDemoResult } = await import('@/lib/demoResults');
         const result = await getDemoResult({
-          platforms: context.platforms ?? ['instagram'],
+          platforms: context.platforms?.length ? context.platforms : ['instagram'],
           language: context.language || 'hebrew',
-          niche: context.niche,
-          goals: context.goals,
         });
         sessionStorage.setItem('viralyze_result', JSON.stringify(result));
         sessionStorage.setItem('viralyze_context', JSON.stringify(context));
@@ -405,14 +402,8 @@ function AnalyzeContent() {
       let ocrData: OcrData | null = null;
 
       const analysisContext: SimpleVideoContext = {
-        platforms: context.platforms ?? ['instagram'],
+        platforms: context.platforms?.length ? context.platforms : ['instagram'],
         language: context.language || 'hebrew',
-        niche: context.niche,
-        goals: context.goals,
-        contentType: context.contentType,
-        editability: context.editability,
-        audienceAge: context.audienceAge,
-        audienceGender: context.audienceGender,
       };
 
       await Promise.all([
@@ -541,52 +532,6 @@ function AnalyzeContent() {
 
       <AnimatePresence mode="wait">
 
-        {/* Pre-analysis flow */}
-        {phase === 'preanalysis' && (
-          <motion.div
-            key="preanalysis"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 max-w-xl mx-auto px-5 py-10"
-          >
-            <div className="text-center mb-8">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 }}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-5"
-                style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)' }}
-              >
-                <span className="text-[#D4A843] text-xs font-bold tracking-widest uppercase">AI מותאם אישית</span>
-              </motion.div>
-              <motion.h1
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="text-3xl md:text-4xl font-black mb-3"
-              >
-                ספר לנו על <span className="gold-text">הסרטון שלך</span>
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.25 }}
-                className="text-white/45 text-sm leading-relaxed max-w-sm mx-auto"
-              >
-                ה-AI שלנו מתאים את כל הניתוח בהתאם לסוג התוכן, המטרה ומגבלות העריכה שלך
-              </motion.p>
-            </div>
-
-            <PreAnalysisFlow
-              onComplete={(ctx) => {
-                setContext((prev) => ({ ...prev, ...ctx }));
-                setPhase('form');
-              }}
-            />
-          </motion.div>
-        )}
-
         {/* Upload form */}
         {phase === 'form' && (
           <motion.div
@@ -596,34 +541,6 @@ function AnalyzeContent() {
             exit={{ opacity: 0 }}
             className="relative z-10 max-w-xl mx-auto px-5 py-10"
           >
-            {/* Context summary pill */}
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center justify-between mb-6 p-3 rounded-xl"
-              style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.15)' }}
-            >
-              <button
-                onClick={() => setPhase('preanalysis')}
-                className="text-xs text-[#D4A843]/55 hover:text-[#D4A843] transition-colors"
-              >
-                שנה
-              </button>
-              <div className="flex items-center gap-2 text-right">
-                <span className="text-xs text-white/55 font-medium">
-                  {context.contentType && (
-                    CONTENT_TYPE_LABELS[context.contentType as keyof typeof CONTENT_TYPE_LABELS] ?? context.contentType
-                  )}
-                  {context.goals && context.goals.length > 0 && ` · ${context.goals.map((g) => GOAL_LABELS[g as keyof typeof GOAL_LABELS] ?? g).join(', ')}`}
-                  {context.editability && ` · ${EDIT_LABELS[context.editability as keyof typeof EDIT_LABELS] ?? ''}`}
-                </span>
-                <div className="w-5 h-5 rounded-lg flex items-center justify-center"
-                  style={{ background: 'rgba(212,168,67,0.1)' }}>
-                  <Zap className="w-3 h-3 text-[#D4A843]" />
-                </div>
-              </div>
-            </motion.div>
-
             {/* Header */}
             <div className="text-center mb-8">
               <h1 className="text-3xl font-black mb-2">
@@ -864,40 +781,6 @@ function AnalyzeContent() {
     </div>
   );
 }
-
-const CONTENT_TYPE_LABELS = {
-  'ad': 'פרסומת',
-  'organic-tiktok': 'TikTok אורגני',
-  'instagram-reel': 'Instagram Reel',
-  'ugc': 'UGC',
-  'storytelling': 'סיפור',
-  'podcast': 'פודקאסט',
-  'meme': 'מים',
-  'tutorial': 'הדרכה',
-  'personal-brand': 'מיתוג אישי',
-  'other': 'אחר',
-};
-
-const GOAL_LABELS = {
-  'views': 'צפיות',
-  'comments': 'תגובות',
-  'shares': 'שיתופים',
-  'followers': 'עוקבים',
-  'watch-time': 'זמן צפייה',
-  'product-ad': 'פרסומת',
-  'sales': 'מכירות',
-  'engagement': 'מעורבות',
-  'ugc': 'UGC',
-  'funny': 'מצחיק',
-  'personal': 'אישי',
-  'emotional': 'רגשי',
-};
-
-const EDIT_LABELS = {
-  'fully-editable': 'עריכה מלאה',
-  'editing-only': 'רק עריכה',
-  'final': 'גרסה סופית',
-};
 
 export default function AnalyzePage() {
   return (
