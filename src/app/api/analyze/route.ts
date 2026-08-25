@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeVideo, analyzeViralPotential, understandVideo, analyzeAdaptive, deriveContentUnderstanding, analyzeVideoAudit } from '@/lib/aiProvider';
 import { normalizeOcrWithTranscript } from '@/lib/ocrProcessor';
+import { auditToFeedback, auditToTimeline } from '@/lib/auditToFeedback';
 import { SimpleVideoContext, VideoFrameData, TranscriptData, OcrData, ViralPotentialAnalysis, AudioMeasurements, AudioEvidence, ContentUnderstanding, WholeVideoUnderstanding, MasterVideoAudit } from '@/types';
 
 export const maxDuration = 120;
@@ -262,6 +263,17 @@ export async function POST(req: NextRequest) {
     if (adaptiveResult) result.adaptiveAnalysis = adaptiveResult;
     if (auditResult) {
       result.videoAudit = auditResult;
+
+      // Override legacy feedback + timeline with richer audit data.
+      // Historical analyses (no videoAudit) retain original analyzeVideo feedback.
+      const hasAuditContent =
+        auditResult.strengths.length + auditResult.weaknesses.length + auditResult.timeline.length > 0;
+      if (hasAuditContent) {
+        result.feedback = auditToFeedback(auditResult);
+        const auditTimeline = auditToTimeline(auditResult);
+        if (auditTimeline.length > 0) result.timeline = auditTimeline;
+      }
+
       console.log('[viralyze:audit]', {
         checksEvaluated: auditResult.checksEvaluated,
         checksPositive: auditResult.checksPositive,
@@ -272,6 +284,7 @@ export async function POST(req: NextRequest) {
         weaknessesSurfaced: auditResult.weaknesses.length,
         strengthsSurfaced: auditResult.strengths.length,
         overallConfidence: auditResult.overallConfidence,
+        feedbackOverridden: hasAuditContent,
       });
     }
     // ────────────────────────────────────────────────────────────────────────────
