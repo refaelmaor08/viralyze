@@ -1,46 +1,10 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Brain, ChevronDown } from 'lucide-react';
+import { Brain, ChevronDown, Mic, Type as TypeIcon } from 'lucide-react';
 import { useState } from 'react';
-import type { WholeVideoUnderstanding, ContentTypeDetected, ContentObjective, EmotionalTone } from '@/types';
-
-// ─── Lookup tables ────────────────────────────────────────────────────────────
-
-const CONTENT_TYPE_HE: Record<ContentTypeDetected, string> = {
-  advertisement:     'פרסומת',
-  showcase:          'תצוגת מוצר',
-  ugc:               'תוכן אמיתי',
-  'cinematic-edit':  'עריכה קולנועית',
-  'trend-content':   'תוכן טרנד',
-  storytelling:      'סיפור',
-  'personal-branding':'מיתוג אישי',
-  educational:       'חינוכי',
-  emotional:         'תוכן רגשי',
-  'organic-tiktok':  'טיקטוק אורגני',
-  'luxury-branding': 'מיתוג יוקרה',
-  tutorial:          'הדרכה',
-  entertainment:     'בידור',
-  review:            'ביקורת',
-};
-
-const OBJECTIVE_HE: Record<ContentObjective, string> = {
-  entertain: 'בידור',
-  inform:    'מידע',
-  persuade:  'שכנוע',
-  inspire:   'השראה',
-  sell:      'מכירה',
-  promote:   'קידום',
-};
-
-const TONE_HE: Record<EmotionalTone, string> = {
-  positive:   'חיובי',
-  neutral:    'ניטרלי',
-  negative:   'שלילי',
-  energetic:  'אנרגטי',
-  calm:       'רגוע',
-  humorous:   'הומוריסטי',
-};
+import type { WholeVideoUnderstanding, OcrData, VideoMetadata } from '@/types';
+import { CONTENT_TYPE_HE, OBJECTIVE_HE, TONE_HE } from '@/lib/labels';
 
 function Badge({ label }: { label: string }) {
   return (
@@ -53,11 +17,25 @@ function Badge({ label }: { label: string }) {
   );
 }
 
-interface Props {
-  wvu: WholeVideoUnderstanding;
+function FactBadge({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-medium text-white/45 px-2.5 py-1 rounded-full"
+      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+    >
+      <Icon className="w-3 h-3" aria-hidden="true" />
+      {label}
+    </span>
+  );
 }
 
-export default function VideoUnderstandingPanel({ wvu }: Props) {
+interface Props {
+  wvu: WholeVideoUnderstanding;
+  ocr?: OcrData;
+  videoMetadata?: VideoMetadata;
+}
+
+export default function VideoUnderstandingPanel({ wvu, ocr, videoMetadata }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const typeLabel = CONTENT_TYPE_HE[wvu.contentType] ?? wvu.contentType;
@@ -94,6 +72,14 @@ export default function VideoUnderstandingPanel({ wvu }: Props) {
           <Badge label={toneLabel} />
           {wvu.commercialIntent && <Badge label="כוונה מסחרית" />}
         </div>
+
+        {/* Detected signals (evidence-backed facts, not interpretation) */}
+        {(videoMetadata?.hasAudio || ocr?.hasText) && (
+          <div className="flex items-center justify-end gap-2 flex-wrap mb-4">
+            {videoMetadata?.hasAudio && <FactBadge icon={Mic} label="כולל אודיו" />}
+            {ocr?.hasText && <FactBadge icon={TypeIcon} label="טקסט על המסך" />}
+          </div>
+        )}
 
         {/* Synthesis — main understanding paragraph */}
         {hasSynthesis && (

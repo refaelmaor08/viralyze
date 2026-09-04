@@ -8,9 +8,8 @@ import { Zap, ArrowRight, RefreshCw, LayoutDashboard, ChevronDown, TrendingUp, S
 import { AnalysisResult, CompetitorAnalysis } from '@/types';
 import { getStoredResult } from '@/lib/history';
 import { scoreColor } from '@/lib/utils';
-import { auditToFixRecommendations } from '@/lib/auditToFeedback';
+import { deriveResultSections } from '@/lib/resultSections';
 import ScoreDashboard from '@/components/results/ScoreDashboard';
-import FeedbackPanel from '@/components/results/FeedbackPanel';
 import SuggestionsPanel from '@/components/results/SuggestionsPanel';
 import FixMyVideo from '@/components/results/FixMyVideo';
 import CompetitorPanel from '@/components/results/CompetitorPanel';
@@ -21,6 +20,11 @@ import AdaptiveSection from '@/components/results/AdaptiveSection';
 import VideoUnderstandingPanel from '@/components/results/VideoUnderstandingPanel';
 import PrioritizedFixesPanel from '@/components/results/PrioritizedFixesPanel';
 import CategoryAnalysisPanel from '@/components/results/CategoryAnalysisPanel';
+import ResultHero from '@/components/results/ResultHero';
+import ExecutiveSummary from '@/components/results/ExecutiveSummary';
+import StrengthsSection from '@/components/results/StrengthsSection';
+import WeaknessesSection from '@/components/results/WeaknessesSection';
+import FinalActionPlan from '@/components/results/FinalActionPlan';
 
 const IS_DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
@@ -159,14 +163,9 @@ export default function ResultsPage() {
   const viralScore = result.scores.viralPotential;
   const headerColor = scoreColor(viralScore);
 
-  // Derive structured fix recommendations from audit when available
-  const fixRecommendations = result.videoAudit
-    ? auditToFixRecommendations(result.videoAudit)
-    : [];
-
-  const hasMeaningfulFeedback =
-    (result.feedback.strengths?.length ?? 0) +
-    (result.feedback.weaknesses?.length ?? 0) > 0;
+  // Single source of truth for strengths / weaknesses / fixes shown across the page —
+  // keeps the executive-summary counts in sync with the sections that follow.
+  const { strengths, weaknesses, fixes: fixRecommendations, isGenuinelyClean } = deriveResultSections(result);
 
   return (
     <div className="min-h-screen bg-[#080808]">
@@ -217,67 +216,38 @@ export default function ResultsPage() {
 
       <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-5">
 
-        {/* ── 1. SCORE HEADER ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl p-5 sm:p-6"
-          style={{
-            background: `linear-gradient(135deg, ${headerColor}08 0%, rgba(8,8,8,0) 70%)`,
-            border: `1px solid ${headerColor}22`,
-          }}
-        >
-          <div className="flex items-center justify-between gap-4 flex-wrap-reverse">
-            {/* Diagnosis sentence */}
-            <div className="flex-1 min-w-0 text-right">
-              {result.overallVerdict && (
-                <p className="text-sm text-white/65 leading-relaxed line-clamp-3">
-                  &ldquo;{result.overallVerdict}&rdquo;
-                </p>
-              )}
-              <p className="text-[11px] text-white/25 mt-2">
-                {new Date(result.createdAt).toLocaleDateString('he-IL', {
-                  weekday: 'short', month: 'short', day: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </p>
-            </div>
-            {/* Score */}
-            <motion.div
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="flex-shrink-0 rounded-2xl px-5 py-3 text-center"
-              style={{
-                background: `${headerColor}12`,
-                border: `1px solid ${headerColor}30`,
-              }}
-            >
-              <div className="text-4xl sm:text-5xl font-black" style={{ color: headerColor }}>
-                {viralScore}
-              </div>
-              <div className="text-[10px] text-white/35 font-medium mt-0.5">פוטנציאל וויראלי</div>
-            </motion.div>
-          </div>
-        </motion.div>
+        {/* ── 1. HERO / VERDICT ── */}
+        <ResultHero result={result} />
 
         {/* ── 2. WHAT VIRALYZE UNDERSTOOD ── */}
         {result.wholeVideoUnderstanding && (
-          <VideoUnderstandingPanel wvu={result.wholeVideoUnderstanding} />
+          <VideoUnderstandingPanel
+            wvu={result.wholeVideoUnderstanding}
+            ocr={result.ocr}
+            videoMetadata={result.videoMetadata}
+          />
         )}
 
-        {/* ── 3 + 4. STRENGTHS + WEAKNESSES ── */}
-        {hasMeaningfulFeedback && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <FeedbackPanel feedback={result.feedback} />
-          </motion.div>
-        )}
+        {/* ── 3. EXECUTIVE SUMMARY ── */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+          <ExecutiveSummary
+            strengthsCount={strengths.length}
+            weaknessesCount={weaknesses.length}
+            fixesCount={fixRecommendations.length}
+          />
+        </motion.div>
 
-        {/* ── 5. PRIORITIZED FIXES ── */}
+        {/* ── 4. WHAT WORKS ── */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <StrengthsSection items={strengths} />
+        </motion.div>
+
+        {/* ── 5. WHAT HURTS THE VIDEO (global weaknesses) ── */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }}>
+          <WeaknessesSection items={weaknesses} isGenuinelyClean={isGenuinelyClean} />
+        </motion.div>
+
+        {/* ── 6. TOP PRIORITY FIXES ── */}
         {fixRecommendations.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -299,7 +269,7 @@ export default function ResultsPage() {
           </motion.div>
         )}
 
-        {/* ── 6. TIMELINE ── */}
+        {/* ── 7. VIDEO TIMELINE ── */}
         {(result.timeline?.length ?? 0) > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -311,7 +281,7 @@ export default function ResultsPage() {
           </motion.div>
         )}
 
-        {/* ── 7. DEEP ANALYSIS (collapsed by default) ── */}
+        {/* ── 8. DEEP ANALYSIS (collapsed by default) ── */}
         {result.videoAudit && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -322,7 +292,10 @@ export default function ResultsPage() {
           </motion.div>
         )}
 
-        {/* ── SECONDARY SECTIONS ── */}
+        {/* ── 9. FINAL ACTION PLAN ── */}
+        <FinalActionPlan fixes={fixRecommendations} highestImpactImprovement={result.videoAudit?.highestImpactImprovement} />
+
+        {/* ── SECONDARY SECTIONS (deeper, optional detail) ── */}
         <SectionDivider label="ניתוח נוסף" />
 
         {/* Full score grid */}

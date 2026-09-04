@@ -1,25 +1,29 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ChevronDown, Layers } from 'lucide-react';
+import {
+  ChevronDown, Layers, Brain, Zap, GitBranch, Gauge,
+  Camera, Sun, Scissors, Mic, Music, Type, Heart, Users,
+} from 'lucide-react';
 import { useState } from 'react';
 import type { MasterVideoAudit, AuditCategorySummary, AuditCategoryId, AuditStrength, AuditWeakness } from '@/types';
+import { CATEGORY_HE as CAT_LABELS } from '@/lib/labels';
 
-// ─── Labels ───────────────────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
-const CAT_LABELS: Record<AuditCategoryId, string> = {
-  understanding: 'הבנת הסרטון',
-  hook:          'פתיחה והוק',
-  structure:     'מבנה וסיפור',
-  pacing:        'קצב ושימור',
-  visual:        'צילום ותמונה',
-  lighting:      'תאורה וצבע',
-  editing:       'עריכה',
-  audio:         'דיבור ואודיו',
-  music:         'מוזיקה',
-  text:          'טקסט וכתוביות',
-  emotion:       'רגש ואותנטיות',
-  engagement:    'מעורבות ושיתוף',
+const CAT_ICON: Record<AuditCategoryId, React.ElementType> = {
+  understanding: Brain,
+  hook:          Zap,
+  structure:     GitBranch,
+  pacing:        Gauge,
+  visual:        Camera,
+  lighting:      Sun,
+  editing:       Scissors,
+  audio:         Mic,
+  music:         Music,
+  text:          Type,
+  emotion:       Heart,
+  engagement:    Users,
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -94,6 +98,7 @@ function CategoryCard({ cat, delay }: { cat: AuditCategorySummary; delay: number
   const [open, setOpen] = useState(false);
   const statusColor = STATUS_COLOR[cat.overallStatus] ?? '#6b7280';
   const label = CAT_LABELS[cat.id] ?? cat.label;
+  const Icon = CAT_ICON[cat.id];
   const pctPositive = cat.checksEvaluated > 0
     ? Math.round((cat.checksPositive / cat.checksEvaluated) * 100)
     : 0;
@@ -124,13 +129,19 @@ function CategoryCard({ cat, delay }: { cat: AuditCategorySummary; delay: number
             {pctPositive}%
           </span>
         </div>
-        {/* Right: status dot + name */}
+        {/* Right: status dot + name + icon */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-white/70">{label}</span>
           <div
             className="w-2 h-2 rounded-full flex-shrink-0"
             style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}60` }}
           />
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.04)' }}
+          >
+            <Icon className="w-3.5 h-3.5 text-white/40" aria-hidden="true" />
+          </div>
         </div>
       </button>
 

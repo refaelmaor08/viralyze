@@ -1,8 +1,8 @@
 /**
  * auditToFeedback — Pure conversion: MasterVideoAudit → legacy UI data formats
  *
- * This is the integration layer between the new audit engine and the existing
- * FeedbackPanel + VisualTimeline UI components.
+ * This is the integration layer between the audit engine and the results-page
+ * UI components (StrengthsSection, WeaknessesSection, VisualTimeline, etc.).
  *
  * No API calls. No new analysis. Only structured reformatting.
  *

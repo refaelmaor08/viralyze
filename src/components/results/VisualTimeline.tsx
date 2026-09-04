@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useRef, useState } from 'react';
 import type { TimelineEntry } from '@/types';
 
 const TYPE_CONFIG = {
@@ -30,7 +31,15 @@ const TYPE_CONFIG = {
   },
 } as const;
 
-function TimelineBar({ entries }: { entries: TimelineEntry[] }) {
+function TimelineBar({
+  entries,
+  activeIndex,
+  onSelect,
+}: {
+  entries: TimelineEntry[];
+  activeIndex: number | null;
+  onSelect: (i: number) => void;
+}) {
   if (entries.length === 0) return null;
   const maxSec = Math.max(...entries.map((e) => e.seconds));
 
@@ -42,19 +51,39 @@ function TimelineBar({ entries }: { entries: TimelineEntry[] }) {
         {entries.map((entry, i) => {
           const cfg = TYPE_CONFIG[entry.type];
           const pct = maxSec > 0 ? (entry.seconds / maxSec) * 100 : 0;
+          const isActive = activeIndex === i;
           return (
-            <motion.div
+            <motion.button
               key={i}
+              type="button"
+              onClick={() => onSelect(i)}
+              aria-label={`${cfg.labelHe} — ${entry.time}: ${entry.text}`}
               initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 1, scale: 1 }}
+              animate={{ opacity: 1, scale: isActive ? 1.35 : 1 }}
               transition={{ delay: i * 0.06, type: 'spring', stiffness: 400, damping: 25 }}
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full z-10"
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full z-10 cursor-pointer"
               style={{
                 left: `${pct}%`,
-                background: cfg.color,
-                boxShadow: `0 0 8px ${cfg.glow}, 0 0 2px ${cfg.color}`,
+                width: 20,
+                height: 20,
+                marginTop: 0,
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
               }}
-            />
+            >
+              <span
+                className="block rounded-full mx-auto"
+                style={{
+                  width: 12,
+                  height: 12,
+                  background: cfg.color,
+                  boxShadow: isActive
+                    ? `0 0 0 4px ${cfg.color}30, 0 0 12px ${cfg.glow}`
+                    : `0 0 8px ${cfg.glow}, 0 0 2px ${cfg.color}`,
+                }}
+              />
+            </motion.button>
           );
         })}
       </div>
@@ -82,6 +111,9 @@ interface VisualTimelineProps {
 }
 
 export default function VisualTimeline({ entries }: VisualTimelineProps) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const entryRefs = useRef<Array<HTMLDivElement | null>>([]);
+
   if (!entries || entries.length === 0) {
     return (
       <div
@@ -97,6 +129,11 @@ export default function VisualTimeline({ entries }: VisualTimelineProps) {
   const sorted = [...entries].sort((a, b) => a.seconds - b.seconds);
   const counts = { strong: 0, warning: 0, critical: 0 };
   sorted.forEach((e) => counts[e.type]++);
+
+  const handleSelect = (i: number) => {
+    setActiveIndex(i);
+    entryRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
 
   return (
     <div className="space-y-6">
@@ -130,8 +167,8 @@ export default function VisualTimeline({ entries }: VisualTimelineProps) {
         className="rounded-2xl p-5"
         style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
-        <p className="text-xs text-white/30 text-right mb-4">ציר הזמן של הסרטון</p>
-        <TimelineBar entries={sorted} />
+        <p className="text-xs text-white/30 text-right mb-4">ציר הזמן של הסרטון — לחצו על נקודה לפרטים</p>
+        <TimelineBar entries={sorted} activeIndex={activeIndex} onSelect={handleSelect} />
         <div className="flex items-center justify-end gap-4 text-[10px] text-white/25">
           <span>0:00</span>
           <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.04)' }} />
@@ -143,17 +180,19 @@ export default function VisualTimeline({ entries }: VisualTimelineProps) {
       <div className="space-y-3">
         {sorted.map((entry, i) => {
           const cfg = TYPE_CONFIG[entry.type];
+          const isActive = activeIndex === i;
           return (
             <motion.div
               key={i}
+              ref={(el) => { entryRefs.current[i] = el; }}
               initial={{ opacity: 0, x: 16 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.05, duration: 0.3 }}
-              className="flex items-start gap-3 p-4 rounded-2xl"
+              className="flex items-start gap-3 p-4 rounded-2xl scroll-mt-24"
               style={{
                 background: cfg.bg,
-                border: `1px solid ${cfg.border}`,
-                boxShadow: `0 0 20px ${cfg.glow}`,
+                border: isActive ? `1.5px solid ${cfg.color}` : `1px solid ${cfg.border}`,
+                boxShadow: isActive ? `0 0 28px ${cfg.glow}, 0 0 0 3px ${cfg.color}20` : `0 0 20px ${cfg.glow}`,
               }}
             >
               {/* Content */}
